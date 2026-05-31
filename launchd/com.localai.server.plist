@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.localai.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/munbyeongcheon/IdeaProjects/LocalAI/scripts/start.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/munbyeongcheon/IdeaProjects/LocalAI</string>
+
+    <!-- 로그인 후 자동 시작 -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- 비정상 종료 시 자동 재시작 -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <!-- 재시작 간격 (초) -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- 로그 -->
+    <key>StandardOutPath</key>
+    <string>/tmp/localai.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/localai.stderr.log</string>
+
+    <!-- 환경 변수 — PATH에 Docker 포함 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/munbyeongcheon/.docker/bin</string>
+        <key>HOME</key>
+        <string>/Users/munbyeongcheon</string>
+    </dict>
+</dict>
+</plist>
