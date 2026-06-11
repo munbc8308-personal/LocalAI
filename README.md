@@ -254,3 +254,22 @@ LocalAI/
 - **mlx-lm 0.31.3**: Gemma 4 MoE 26B-A4B 계열만 호환. Dense 모델(e4b, 31b)은 k/v projection 아키텍처 불일치로 미동작.
 - **동시 요청**: MLX GPU 스트림이 thread-local이므로 동일 모델은 직렬 처리됨.
 - **SearXNG**: Docker가 실행 중이어야 검색 기능 사용 가능. 미실행 시 Tavily로 자동 폴백.
+
+---
+
+## 변경 이력
+
+### 2026-06-11
+
+**launchd 서비스 안정성 개선**
+- `scripts/start.sh`: Docker 데몬 미실행 시에도 서버가 정상 시작되도록 수정 (`set -e` 제거, Docker 오류 무시)
+- `launchd/com.localai.server.plist`: `KeepAlive.Crashed` → `KeepAlive: true` — 종료 코드 무관하게 항상 30초 후 자동 재시작
+
+**RAG 검색 품질 개선**
+- **하이브리드 검색**: 벡터 검색 단독 → 벡터(top 20) + BM25(top 20) → RRF(Reciprocal Rank Fusion) 퓨전
+- **Cross-encoder 리랭킹**: RRF 결과를 `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`(한국어 지원)로 재정렬 후 top 5 반환
+- BM25 인덱스는 문서 추가/삭제 시 자동 재빌드 (평상시 overhead 없음)
+
+**멀티에이전트 하네스 개선**
+- **Judge 피드백 루프 수정**: 재시도 시 `judge_feedback`이 `synthesize` 노드에 전달되어 실질적인 품질 향상 반영 (기존에는 피드백이 버려지고 동일 응답 반복)
+- **프롬프트 전면 개선**: 모든 에이전트 한국어 응답 명시, 결론 우선 응답 구조, Orchestrator에 few-shot 라우팅 예시 5개 추가, Judge pass 기준 0.8 → 0.75
