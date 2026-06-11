@@ -19,12 +19,9 @@
     <key>RunAtLoad</key>
     <true/>
 
-    <!-- 비정상 종료 시 자동 재시작 -->
+    <!-- 항상 자동 재시작 (종료 코드 무관) -->
     <key>KeepAlive</key>
-    <dict>
-        <key>Crashed</key>
-        <true/>
-    </dict>
+    <true/>
 
     <!-- 재시작 간격 (초) -->
     <key>ThrottleInterval</key>
