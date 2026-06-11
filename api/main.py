@@ -11,6 +11,8 @@ from core.model import ModelManager
 from connectors import ConnectorRunner
 from harness import MemoryStore, build_graph
 from rag import Indexer, Retriever
+from schedules import init_db, start as sched_start, stop as sched_stop
+from schedules.router import router as schedules_router
 from search import UnifiedSearchClient
 
 logging.basicConfig(
@@ -66,6 +68,10 @@ async def lifespan(app: FastAPI):
     # 메모리 스토어 초기화
     memory_store = MemoryStore()
 
+    # 스케줄러 초기화 및 시작
+    init_db()
+    sched_start()
+
     # 메신저 커넥터 시작 (백그라운드 태스크)
     connector_runner = ConnectorRunner(
         settings=settings,
@@ -90,6 +96,7 @@ async def lifespan(app: FastAPI):
 
     await connector_runner.stop()
     await search_client.close()
+    sched_stop()
     logger.info("=== LocalAI 종료 ===")
 
 
@@ -112,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router, tags=["models"])
     app.include_router(chat.router, tags=["chat"])
     app.include_router(documents.router, tags=["documents"])
+    app.include_router(schedules_router, tags=["schedules"])
 
     return app
 
