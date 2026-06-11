@@ -15,6 +15,7 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 | **웹 검색** | SearXNG (자체 호스팅) + Tavily API 폴백 |
 | **Telegram 봇** | 채팅, 파일 업로드(RAG 자동 인덱싱), 대화 히스토리 |
 | **Discord 봇** | 채널별 세션, `!clear` 명령어 |
+| **브리핑 스케줄** | 웹 UI에서 주제·시각 등록 → 매일 자동 조사 후 Telegram 전송 |
 
 ---
 
@@ -178,6 +179,35 @@ curl http://localhost:8000/v1/documents/stats
 curl -X DELETE http://localhost:8000/v1/documents/document.pdf
 ```
 
+### 브리핑 스케줄
+
+웹 UI: `http://localhost:8000/schedules`
+
+```bash
+# 스케줄 목록
+curl http://localhost:8000/v1/schedules
+
+# 스케줄 추가
+curl -X POST http://localhost:8000/v1/schedules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "미국 주식 브리핑",
+    "topic": "어제 미국 주식 시장 브리핑을 한국어로 정리해줘.",
+    "hour": 8,
+    "minute": 45,
+    "chat_id": "<telegram-chat-id>"
+  }'
+
+# 즉시 실행 (테스트)
+curl -X POST http://localhost:8000/v1/schedules/1/run
+
+# 활성/비활성 토글
+curl -X PATCH http://localhost:8000/v1/schedules/1/toggle
+
+# 삭제
+curl -X DELETE http://localhost:8000/v1/schedules/1
+```
+
 ### 기타
 
 ```bash
@@ -235,12 +265,17 @@ LocalAI/
 │   ├── telegram.py       # aiogram 3.x
 │   ├── discord.py        # discord.py 2.x
 │   └── runner.py         # 커넥터 실행 관리
+├── schedules/            # 브리핑 스케줄 관리
+│   ├── db.py             # SQLite CRUD
+│   ├── runner.py         # LocalAI API 호출 → Telegram 전송
+│   ├── scheduler.py      # APScheduler — DB와 자동 동기화
+│   └── router.py         # REST API + 웹 UI (/schedules)
 ├── docker/
 │   ├── docker-compose.yml
 │   └── searxng/settings.yml
 ├── scripts/
 │   └── service.sh        # launchd 서비스 관리 스크립트
-├── data/                 # 벡터DB · 모델 캐시 (gitignore)
+├── data/                 # 벡터DB · 스케줄DB · 모델 캐시 (gitignore)
 ├── .env                  # 환경 변수 (gitignore)
 ├── .env.example
 ├── requirements.txt
@@ -273,3 +308,9 @@ LocalAI/
 **멀티에이전트 하네스 개선**
 - **Judge 피드백 루프 수정**: 재시도 시 `judge_feedback`이 `synthesize` 노드에 전달되어 실질적인 품질 향상 반영 (기존에는 피드백이 버려지고 동일 응답 반복)
 - **프롬프트 전면 개선**: 모든 에이전트 한국어 응답 명시, 결론 우선 응답 구조, Orchestrator에 few-shot 라우팅 예시 5개 추가, Judge pass 기준 0.8 → 0.75
+
+**브리핑 스케줄 웹 UI**
+- `schedules/` 모듈 신규 추가: SQLite(db.py) + APScheduler(scheduler.py) + Telegram 전송(runner.py) + FastAPI 라우터(router.py)
+- 웹 UI(`http://localhost:8000/schedules`): 스케줄 추가·수정·삭제, 활성/비활성 토글, 즉시 실행, 마지막 실행 상태 표시
+- REST API: `GET/POST /v1/schedules`, `PUT/DELETE/PATCH/POST /v1/schedules/{id}`
+- launchd 기반 `daily_brief.py` 방식 폐기 → 웹 UI 방식으로 전환
