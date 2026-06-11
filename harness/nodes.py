@@ -147,6 +147,12 @@ def make_nodes(
             else state["query"]
         )
 
+        # Judge 피드백이 있으면 재시도에 반영
+        iteration = state.get("iteration", 0)
+        feedback = state.get("judge_feedback", "")
+        if iteration > 0 and feedback:
+            user_content += f"\n\n[이전 응답 개선 요청]: {feedback}\n위 피드백을 반드시 반영하여 더 나은 응답을 작성하세요."
+
         model = model_manager.get(AgentRole.SUMMARY)
         messages = [
             {"role": "system", "content": SYNTHESIZE_SYSTEM},
@@ -154,7 +160,7 @@ def make_nodes(
             {"role": "user", "content": user_content},
         ]
         response = await model.generate(messages)
-        logger.info("[synthesize] 응답 합성 완료")
+        logger.info(f"[synthesize] 응답 합성 완료 (iteration={iteration})")
         return {
             "final_response": response,
             "messages": [{"role": "assistant", "content": response}],
