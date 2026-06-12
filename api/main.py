@@ -68,9 +68,9 @@ async def lifespan(app: FastAPI):
     # 메모리 스토어 초기화
     memory_store = MemoryStore()
 
-    # 스케줄러 초기화 및 시작
+    # 스케줄러 초기화 및 시작 (indexer 주입 → 뉴스 자동 크롤)
     init_db()
-    sched_start()
+    sched_start(indexer=indexer)
 
     # 메신저 커넥터 시작 (백그라운드 태스크)
     connector_runner = ConnectorRunner(

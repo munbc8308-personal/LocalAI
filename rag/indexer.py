@@ -43,6 +43,9 @@ class Indexer:
         docs = [Document(page_content=text, metadata={"source": source, "chunk_id": 0})]
         return self._upsert(docs)
 
+    def index_documents(self, docs: list[Document]) -> int:
+        return self._upsert(docs)
+
     def _upsert(self, docs: list[Document]) -> int:
         if not docs:
             return 0

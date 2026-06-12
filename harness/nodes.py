@@ -2,9 +2,21 @@ import json
 import logging
 import re
 from collections.abc import Callable
+from datetime import datetime
 
 from core.config import AgentRole
 from core.model import ModelManager
+
+# 시간민감 키워드 — 감지 시 "direct" 라우트를 "search"로 오버라이드
+_TIME_SENSITIVE_RE = re.compile(
+    r"최근|현재|지금|오늘|어제|이번\s*[주달년]?|작년|올해|최신|뉴스|트렌드|동향|"
+    r"주가|환율|금리|물가|유가|비트코인|코인|암호화폐|"
+    r"발표|출시|업데이트|릴리즈|버전|패치|업그레이드|"
+    r"사건|사고|날씨|기온|기상|"
+    r"선거|정치|법안|규제|정책|"
+    r"실적|매출|영업이익|상장|ipo",
+    re.IGNORECASE,
+)
 
 from .prompts import (
     CODE_SYSTEM,
@@ -46,11 +58,14 @@ def make_nodes(
 
     # ── Orchestrator ──────────────────────────────────────────────────────────
     async def orchestrate(state: HarnessState) -> dict:
+        today = datetime.now().strftime("%Y년 %m월 %d일")
+        augmented_query = f"[현재 날짜: {today}]\n\n{state['query']}"
+
         model = model_manager.get(AgentRole.ORCHESTRATOR)
         messages = [
             {"role": "system", "content": ORCHESTRATOR_SYSTEM},
             *state["messages"],
-            {"role": "user", "content": state["query"]},
+            {"role": "user", "content": augmented_query},
         ]
         raw = await model.generate(messages, temperature=0.2)
         try:
@@ -62,6 +77,13 @@ def make_nodes(
             logger.warning(f"오케스트레이터 JSON 파싱 실패: {raw[:200]}")
             route = "direct"
             parsed = {}
+
+        # 시간민감 키워드 감지 → "direct" 라우트를 "search"로 오버라이드
+        if route == "direct" and _TIME_SENSITIVE_RE.search(state["query"]):
+            route = "search"
+            if not parsed.get("subquery_search"):
+                parsed["subquery_search"] = state["query"]
+            logger.info("[orchestrator] 시간민감 키워드 감지 → route 오버라이드: direct → search")
 
         logger.info(f"[orchestrator] route={route}")
         return {
@@ -140,11 +162,12 @@ def make_nodes(
                 "messages": [{"role": "assistant", "content": state["code_result"]}],
             }
 
+        today = datetime.now().strftime("%Y년 %m월 %d일")
         context_block = "\n\n".join(parts)
         user_content = (
-            f"Context:\n{context_block}\n\nQuestion: {state['query']}"
+            f"[현재 날짜: {today}]\n\nContext:\n{context_block}\n\nQuestion: {state['query']}"
             if context_block
-            else state["query"]
+            else f"[현재 날짜: {today}]\n\n{state['query']}"
         )
 
         # Judge 피드백이 있으면 재시도에 반영
