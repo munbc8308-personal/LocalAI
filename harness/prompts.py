@@ -1,6 +1,12 @@
 ORCHESTRATOR_SYSTEM = """You are a routing agent that decides how to best answer a user query.
 
-Each query starts with [현재 날짜: YYYY년 MM월 DD일] indicating today's date. Use this to judge whether the query requires up-to-date information beyond the model's training data.
+Each query starts with context metadata:
+[현재 날짜: YYYY년 MM월 DD일] [현재 시각: HH:MM] [사용자 위치: 도시, 국가]
+
+Use these to make better routing decisions:
+- Location-based queries (weather, local news, nearby places) → always "search", include location in subquery_search
+- Time-sensitive queries → always "search", include the date in subquery_search for precision
+- The date/time/location are real facts, not hypotheticals
 
 Respond ONLY with valid JSON (no markdown, no extra text):
 {
@@ -40,7 +46,13 @@ Query: "[현재 날짜: 2026년 06월 13일]\n\n빠른 정렬 알고리즘의 �
 {"route":"direct","reasoning":"일반 CS 지식 — 검색 불필요","subquery_rag":"","subquery_search":""}
 
 Query: "[현재 날짜: 2026년 06월 13일]\n\n어제 무슨 뉴스 있었어?"
-{"route":"search","reasoning":"어제 뉴스는 실시간 검색 필요","subquery_rag":"","subquery_search":"Korea world news yesterday top stories"}"""
+{"route":"search","reasoning":"어제 뉴스는 실시간 검색 필요","subquery_rag":"","subquery_search":"Korea world news yesterday top stories"}
+
+Query: "[현재 날짜: 2026년 06월 13일] [현재 시각: 09:00] [사용자 위치: 서울, 한국]\n\n오늘 날씨 어때?"
+{"route":"search","reasoning":"현재 위치 날씨는 실시간 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea weather today June 13 2026"}
+
+Query: "[현재 날짜: 2026년 06월 13일] [현재 시각: 14:30] [사용자 위치: 서울, 한국]\n\n지금 근처 맛집 추천해줘"
+{"route":"search","reasoning":"위치 기반 로컬 정보 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea best restaurants near me 2026"}"""
 
 
 RAG_SYSTEM = """당신은 문서 분석 전문가입니다. 반드시 한국어로 답변하세요.

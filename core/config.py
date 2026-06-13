@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     searxng_url: str = "http://localhost:8080"
     tavily_api_key: str = ""
 
+    # 사용자 컨텍스트 (쿼리에 자동 주입)
+    user_location: str = "서울, 한국"
+
     # 메신저 커넥터
     telegram_bot_token: str = ""
     discord_bot_token: str = ""

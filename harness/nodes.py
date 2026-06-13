@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from datetime import datetime
 
-from core.config import AgentRole
+from core.config import AgentRole, get_settings
 from core.model import ModelManager
 
 # 시간민감 키워드 — 감지 시 "direct" 라우트를 "search"로 오버라이드
@@ -58,8 +58,14 @@ def make_nodes(
 
     # ── Orchestrator ──────────────────────────────────────────────────────────
     async def orchestrate(state: HarnessState) -> dict:
-        today = datetime.now().strftime("%Y년 %m월 %d일")
-        augmented_query = f"[현재 날짜: {today}]\n\n{state['query']}"
+        now = datetime.now()
+        location = get_settings().user_location
+        ctx = (
+            f"[현재 날짜: {now.strftime('%Y년 %m월 %d일')}] "
+            f"[현재 시각: {now.strftime('%H:%M')}] "
+            f"[사용자 위치: {location}]"
+        )
+        augmented_query = f"{ctx}\n\n{state['query']}"
 
         model = model_manager.get(AgentRole.ORCHESTRATOR)
         messages = [
@@ -162,12 +168,18 @@ def make_nodes(
                 "messages": [{"role": "assistant", "content": state["code_result"]}],
             }
 
-        today = datetime.now().strftime("%Y년 %m월 %d일")
+        now = datetime.now()
+        location = get_settings().user_location
+        ctx = (
+            f"[현재 날짜: {now.strftime('%Y년 %m월 %d일')}] "
+            f"[현재 시각: {now.strftime('%H:%M')}] "
+            f"[사용자 위치: {location}]"
+        )
         context_block = "\n\n".join(parts)
         user_content = (
-            f"[현재 날짜: {today}]\n\nContext:\n{context_block}\n\nQuestion: {state['query']}"
+            f"{ctx}\n\nContext:\n{context_block}\n\nQuestion: {state['query']}"
             if context_block
-            else f"[현재 날짜: {today}]\n\n{state['query']}"
+            else f"{ctx}\n\n{state['query']}"
         )
 
         # Judge 피드백이 있으면 재시도에 반영
