@@ -37,6 +37,7 @@ feedparser>=6.0.0
 # Search
 httpx>=0.27.0
 tavily-python>=0.3.0
+ddgs>=0.1.0
 
 # Messenger connectors
 aiogram>=3.0.0
