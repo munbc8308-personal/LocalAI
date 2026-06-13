@@ -183,7 +183,13 @@ def make_nodes(
             {"role": "user", "content": user_content},
         ]
         response = await model.generate(messages)
-        logger.info(f"[synthesize] 응답 합성 완료 (iteration={iteration})")
+
+        # thinking 토큰이 전체 max_tokens를 소진한 경우 — 빈 응답 fallback
+        if not response:
+            logger.warning("[synthesize] 빈 응답 — thinking 토큰 초과 추정, fallback 반환")
+            response = "죄송합니다, 응답을 생성하지 못했습니다. 다시 질문해 주세요."
+
+        logger.info(f"[synthesize] 응답 합성 완료 (iteration={iteration}, len={len(response)})")
         return {
             "final_response": response,
             "messages": [{"role": "assistant", "content": response}],

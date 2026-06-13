@@ -14,8 +14,10 @@ import re
 
 def _strip_thinking(text: str) -> str:
     """Gemma 4 thinking 채널 태그 제거."""
-    # <|channel>thought ... <channel|> 블록 제거
+    # 완전한 블록: <|channel>thought ... <channel|> 제거
     text = re.sub(r"<\|channel>thought.*?<channel\|>", "", text, flags=re.DOTALL)
+    # 닫힘 태그 없이 끝난 경우: <|channel>thought 이후 전부 제거
+    text = re.sub(r"<\|channel>thought.*", "", text, flags=re.DOTALL)
     return text.strip()
 
 
@@ -101,8 +103,10 @@ class ModelInstance:
                 chunk = await queue.get()
                 if chunk is None:
                     if not thinking_done:
-                        # 태그 없이 끝난 경우 전체 버퍼 그대로 사용
-                        yield _strip_thinking(buffer)
+                        # 닫힘 태그 없이 끝난 경우 — thinking만 있고 실제 응답 없음
+                        cleaned = _strip_thinking(buffer)
+                        if cleaned:
+                            yield cleaned
                     break
                 if not thinking_done:
                     buffer += chunk

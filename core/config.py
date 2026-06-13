@@ -61,8 +61,17 @@ class Settings(BaseSettings):
             AgentRole.SEARCH: self.search_model,
             AgentRole.SUMMARY: self.summary_model,
         }
-        # 오케스트레이터와 코드 에이전트는 더 많은 토큰 허용
-        max_tokens = 8192 if role in (AgentRole.ORCHESTRATOR, AgentRole.CODE) else self.max_tokens
+        # Gemma 4 thinking 모델은 thinking 토큰이 응답 앞에 붙음
+        # thinking(최대 ~2k) + 실제 응답이 모두 들어갈 수 있도록 충분히 할당
+        max_tokens_map = {
+            AgentRole.ORCHESTRATOR: 8192,
+            AgentRole.CODE: 8192,
+            AgentRole.SUMMARY: 8192,   # 최종 응답 생성 — thinking 여유 필요
+            AgentRole.SEARCH: 6144,
+            AgentRole.RAG: 6144,
+            AgentRole.JUDGE: 4096,
+        }
+        max_tokens = max_tokens_map.get(role, self.max_tokens)
         temp = 0.3 if role == AgentRole.ORCHESTRATOR else self.temperature
 
         return ModelConfig(
