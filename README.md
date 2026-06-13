@@ -115,6 +115,9 @@ API_PORT=8000
 SEARXNG_URL=http://localhost:8080
 TAVILY_API_KEY=              # SearXNG 미응답 시 폴백
 
+# 사용자 컨텍스트 (쿼리에 자동 주입)
+USER_LOCATION=서울, 한국        # 날씨·로컬 정보 쿼리에 활용
+
 # 메신저 봇 (선택)
 TELEGRAM_BOT_TOKEN=
 DISCORD_BOT_TOKEN=
@@ -309,6 +312,13 @@ LocalAI/
 - 서버 시작 시 즉시 1회 실행 + 이후 6시간 주기 반복 (APScheduler 연동)
 - 7일 경과 뉴스 자동 삭제 — 인덱스를 항상 최신 상태로 유지
 - RAG 검색 시 뉴스 기사가 문서와 동일한 하이브리드 파이프라인(BM25+벡터+리랭킹)으로 검색됨
+
+**쿼리 컨텍스트 자동 주입 (위치·시각)**
+
+- 모든 쿼리에 `[현재 날짜] [현재 시각] [사용자 위치]` 헤더를 자동 주입 — 날씨·로컬 정보 등 위치 의존 질문에 정확한 검색 쿼리 생성
+- `USER_LOCATION` 환경 변수로 위치 설정 (기본: `서울, 한국`)
+- ORCHESTRATOR가 위치를 인식해 `subquery_search`를 `"Seoul Korea weather today"` 형태로 자동 생성
+- 날씨·로컬 맛집 등 위치 기반 예시 2개 추가
 
 **Gemma 4 thinking 토큰 누출 버그 수정**
 
