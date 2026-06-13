@@ -310,6 +310,13 @@ LocalAI/
 - 7일 경과 뉴스 자동 삭제 — 인덱스를 항상 최신 상태로 유지
 - RAG 검색 시 뉴스 기사가 문서와 동일한 하이브리드 파이프라인(BM25+벡터+리랭킹)으로 검색됨
 
+**Gemma 4 thinking 토큰 누출 버그 수정**
+
+- `core/model.py`: `_strip_thinking()` 개선 — 닫힘 태그(`<channel|>`) 없이 끊긴 thinking 블록도 완전히 제거
+- `core/config.py`: SUMMARY 8192 / SEARCH·RAG 6144 토큰으로 증가 — thinking + 실제 응답이 함께 생성될 공간 확보 (기존 4096에서 thinking이 전부 소진되던 문제 해결)
+- `harness/nodes.py`: synthesize 노드 빈 응답 fallback 추가 — thinking 초과로 응답이 비어있을 때 재시도 루프 방지
+- `harness/prompts.py`: SYNTHESIZE_SYSTEM · SEARCH_SYSTEM에 "주입된 날짜를 미래로 표현하지 말 것" 규칙 추가
+
 ---
 
 ### 2026-06-11
