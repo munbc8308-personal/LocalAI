@@ -168,9 +168,9 @@ def notes_get(note_id: str) -> dict:
 
 
 @mcp.tool()
-def notes_create(title: str, body: str, folder: str = "") -> dict:
-    """Apple Notes에 새 노트를 생성합니다."""
-    args = ["notes", "create", "--title", title, "--body", body]
+def notes_create(title: str, content: str, folder: str = "") -> dict:
+    """Apple Notes에 새 노트를 생성합니다. content는 HTML 형식."""
+    args = ["notes", "create", "--title", title, "--content", content]
     if folder:
         args += ["--folder", folder]
     return _run(args)
