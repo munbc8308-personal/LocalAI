@@ -19,6 +19,8 @@ def _route_after_orchestrator(state: HarnessState) -> str:
             return "code_gen"
         case "rag+search":
             return "retrieve"   # retrieve → web_search → synthesize 순서
+        case "tools":
+            return "tool_call"
         case _:
             return "synthesize"
 
@@ -66,6 +68,7 @@ def build_graph(
     builder.add_conditional_edges("retrieve", _route_after_retrieve)
     builder.add_edge("web_search", "synthesize")
     builder.add_edge("code_gen", "synthesize")
+    builder.add_edge("tool_call", "synthesize")
     builder.add_edge("synthesize", "judge")
     builder.add_conditional_edges("judge", _route_after_judge)
 

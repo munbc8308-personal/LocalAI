@@ -19,6 +19,8 @@ class HarnessState(TypedDict):
     rag_context: str
     search_context: str
     code_result: str
+    tool_context: str      # orchard 도구 실행 결과
+    subquery_tools: str    # 도구 호출 의도 (오케스트레이터 → tool_call 노드)
 
     # 최종 합성 결과
     final_response: str

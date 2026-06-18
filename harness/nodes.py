@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -18,6 +19,8 @@ _TIME_SENSITIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
+from tools.orchard import dispatch as orchard_dispatch
+
 from .prompts import (
     CODE_SYSTEM,
     JUDGE_SYSTEM,
@@ -25,6 +28,7 @@ from .prompts import (
     RAG_SYSTEM,
     SEARCH_SYSTEM,
     SYNTHESIZE_SYSTEM,
+    TOOLS_SYSTEM,
 )
 from .state import HarnessState
 
@@ -77,7 +81,7 @@ def make_nodes(
         try:
             parsed = _extract_json(raw)
             route = parsed.get("route", "direct")
-            if route not in ("rag", "search", "code", "rag+search", "direct"):
+            if route not in ("rag", "search", "code", "rag+search", "tools", "direct"):
                 route = "direct"
         except (json.JSONDecodeError, ValueError):
             logger.warning(f"오케스트레이터 JSON 파싱 실패: {raw[:200]}")
@@ -96,6 +100,7 @@ def make_nodes(
             "route": route,
             "subquery_rag": parsed.get("subquery_rag", state["query"]),
             "subquery_search": parsed.get("subquery_search", state["query"]),
+            "subquery_tools": parsed.get("subquery_tools", state["query"]),
             "iteration": state.get("iteration", 0),
         }
 
@@ -155,6 +160,53 @@ def make_nodes(
         logger.info("[code] 생성 완료")
         return {"code_result": result}
 
+    # ── Tool Call (orchard) ───────────────────────────────────────────────────
+    async def tool_call(state: HarnessState) -> dict:
+        intent = state.get("subquery_tools") or state["query"]
+
+        # 소형 모델로 intent → tool+args JSON 변환
+        now = datetime.now()
+        model = model_manager.get(AgentRole.SEARCH)
+        messages = [
+            {"role": "system", "content": TOOLS_SYSTEM},
+            {
+                "role": "user",
+                "content": (
+                    f"[현재 날짜: {now.strftime('%Y년 %m월 %d일')}] "
+                    f"[현재 시각: {now.strftime('%H:%M')}]\n\n{intent}"
+                ),
+            },
+        ]
+        raw = await model.generate(messages, temperature=0.1)
+
+        try:
+            parsed = _extract_json(raw)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(f"[tool_call] JSON 파싱 실패: {raw[:200]}")
+            return {"tool_context": f"도구 파싱 실패: {raw[:300]}"}
+
+        # 단일 도구 or 복수 도구
+        calls = parsed.get("tools") or ([{"tool": parsed["tool"], "args": parsed.get("args", {})}] if "tool" in parsed else [])
+        if not calls:
+            return {"tool_context": "실행할 도구를 결정하지 못했습니다."}
+
+        results = []
+        for call in calls:
+            tool_name = call.get("tool", "")
+            tool_args = call.get("args", {})
+            logger.info(f"[tool_call] {tool_name}({tool_args})")
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, orchard_dispatch, tool_name, tool_args
+            )
+            results.append({"tool": tool_name, "result": result})
+
+        context = "\n\n".join(
+            f"[{r['tool']}]\n{json.dumps(r['result'], ensure_ascii=False, indent=2)}"
+            for r in results
+        )
+        logger.info(f"[tool_call] {len(results)}개 도구 실행 완료")
+        return {"tool_context": context}
+
     # ── Synthesize ────────────────────────────────────────────────────────────
     async def synthesize(state: HarnessState) -> dict:
         parts = []
@@ -162,6 +214,8 @@ def make_nodes(
             parts.append(f"[문서 검색 결과]\n{state['rag_context']}")
         if state.get("search_context"):
             parts.append(f"[웹 검색 결과]\n{state['search_context']}")
+        if state.get("tool_context"):
+            parts.append(f"[Apple 시스템 도구 결과]\n{state['tool_context']}")
         if state.get("code_result"):
             return {
                 "final_response": state["code_result"],
@@ -243,6 +297,7 @@ def make_nodes(
         "retrieve": retrieve,
         "web_search": web_search,
         "code_gen": code_gen,
+        "tool_call": tool_call,
         "synthesize": synthesize,
         "judge": judge,
     }
