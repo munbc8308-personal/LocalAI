@@ -12,10 +12,12 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 | **OpenAI 호환 API** | `/v1/chat/completions` — streaming / non-streaming |
 | **멀티에이전트 하네스** | LangGraph 기반 Orchestrator → RAG / Search / Code / Synthesize → Judge |
 | **RAG** | PDF·TXT·MD 문서 인덱싱 + ChromaDB 벡터 검색 |
-| **웹 검색** | SearXNG (자체 호스팅) + Tavily API 폴백 |
+| **웹 검색** | SearXNG → Tavily → DuckDuckGo 3단계 폴백 (API 키 불필요) |
+| **Apple 앱 통합** | 캘린더·리마인더·날씨·노트·메시지·연락처·음악·위치 (orchard CLI) |
 | **Telegram 봇** | 채팅, 파일 업로드(RAG 자동 인덱싱), 대화 히스토리 |
 | **Discord 봇** | 채널별 세션, `!clear` 명령어 |
 | **브리핑 스케줄** | 웹 UI에서 주제·시각 등록 → 매일 자동 조사 후 Telegram 전송 |
+| **MCP 서버** | Claude Code에서 orchard 도구 직접 사용 (`~/.claude/settings.json` 등록) |
 
 ---
 
@@ -33,8 +35,10 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
   │  Orchestrator → route 결정              │
   │    ├─ "rag"        → Retriever (RAG)    │
   │    ├─ "search"     → SearXNG / Tavily   │
+  │    │                 / DuckDuckGo       │
   │    ├─ "code"       → Code Agent         │
   │    ├─ "rag+search" → RAG + Search       │
+  │    ├─ "tools"      → orchard (Apple 앱) │
   │    └─ "direct"     → 바로 응답          │
   │  Synthesize → 컨텍스트 합성             │
   │  Judge → 품질 평가 (재시도 최대 2회)    │
@@ -42,7 +46,8 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
         │
         ▼
   MLX-LM 모델 (core/)          ChromaDB (rag/)
-  Gemma 4 26B-A4B (2개 인스턴스)  nomic-embed-text-v1.5
+  Gemma 4 (여러 인스턴스)        nomic-embed-text-v1.5
+                                orchard CLI (Apple 앱)
 ```
 
 ### 에이전트별 모델 할당
@@ -261,8 +266,14 @@ LocalAI/
 │   ├── indexer.py        # ChromaDB 인덱싱
 │   └── retriever.py      # 코사인 유사도 검색
 ├── search/               # 웹 검색
-│   ├── client.py         # UnifiedSearchClient
-│   └── searxng.py        # SearXNG 어댑터
+│   ├── client.py         # UnifiedSearchClient (SearXNG→Tavily→DDG)
+│   ├── searxng.py        # SearXNG 어댑터
+│   ├── tavily.py         # Tavily 어댑터
+│   └── ddg.py            # DuckDuckGo 어댑터 (API 키 불필요)
+├── tools/                # Apple 앱 통합 (orchard CLI)
+│   └── orchard.py        # dispatch() — 하네스·MCP 서버 공유
+├── mcp/                  # MCP 서버 (Claude Code 연동)
+│   └── orchard_server.py # FastMCP 서버 — ~/.claude/settings.json 등록
 ├── connectors/           # 메신저 연동
 │   ├── base.py           # BaseConnector
 │   ├── telegram.py       # aiogram 3.x
@@ -296,6 +307,30 @@ LocalAI/
 ---
 
 ## 변경 이력
+
+### 2026-06-19
+
+**orchard Apple 앱 통합 (tools 라우트)**
+
+- `tools/orchard.py` 신규: orchard CLI `dispatch()` 공유 실행 레이어
+  - 캘린더·리마인더·날씨·노트·메시지·연락처·음악·위치 17개 도구 지원
+  - 하네스(LocalAI)와 MCP 서버(Claude Code) 양쪽에서 동일 코드 재사용
+- `harness/state.py`: `tool_context`, `subquery_tools` 필드 추가
+- `harness/prompts.py`: `TOOLS_SYSTEM` 프롬프트 추가 (의도 → tool+args JSON 변환), ORCHESTRATOR에 `"tools"` 라우트 및 few-shot 예시 7개 추가
+- `harness/nodes.py`: `tool_call` 노드 추가
+  - 소형 모델(Search)이 사용자 의도를 파싱해 tool+args JSON 결정
+  - `orchard_dispatch()` 실행 후 결과를 `tool_context`로 전달
+  - 복수 도구 동시 호출 지원 (`{"tools": [...]}`)
+- `harness/graph.py`: `orchestrate → tool_call → synthesize` 경로 추가
+- 동작 예시: "오늘 일정 알려줘" → `calendar_list_events`, "다음 곡 틀어줘" → `music_control(next)`
+
+**orchard MCP 서버 (Claude Code 연동)**
+
+- `mcp/orchard_server.py` 신규: `tools/orchard.py`를 FastMCP로 노출
+- `~/.claude/settings.json`에 등록 — Claude Code 재시작 후 자동 연결
+- 사용 가능 도구 (17개): `calendar_list_calendars`, `calendar_list_events`, `calendar_create_event`, `reminder_list`, `reminder_create`, `weather_get`, `notes_search`, `notes_get`, `notes_create`, `messages_list_chats`, `messages_read`, `messages_send`, `contacts_search`, `contacts_details`, `music_info`, `music_control`, `music_play`, `location_current`, `location_search`, `location_route`
+
+---
 
 ### 2026-06-18
 
