@@ -52,6 +52,7 @@ def _build_initial_state(request: ChatRequest, session: ConversationMemory) -> H
         judge_feedback="",
         judge_pass=False,
         iteration=0,
+        max_iterations=request.max_iterations,
     )
 
 

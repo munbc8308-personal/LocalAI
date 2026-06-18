@@ -297,6 +297,27 @@ LocalAI/
 
 ## 변경 이력
 
+### 2026-06-18
+
+**브리핑 스케줄 안정성 수정 (주식 브리핑 미전송 버그)**
+
+- **원인**: `INFERENCE_TIMEOUT = 300`초 — 27B 오케스트레이터 단독으로 5분+ 소요하므로 runner의 HTTP 클라이언트가 모델 추론 완료 전에 타임아웃 발생 → `"실패:"` 기록
+- `schedules/runner.py`: `INFERENCE_TIMEOUT` 300 → **1200초(20분)** 로 증가
+- `schedules/runner.py`: `max_iterations: 1` 파라미터 추가 — 스케줄 작업은 judge 재시도 없이 1회만 실행 (재시도 시 총 처리 시간 2배)
+- `schedules/runner.py`: 예외 로깅에 `type(e).__name__` 포함 — 원인 불명 오류(`"실패:"`) 방지
+- `schedules/scheduler.py`: `misfire_grace_time` 300 → **600초(10분)** — 재부팅 후 모델 로딩 중 놓친 스케줄 허용 범위 확대
+- `api/schemas.py`: `ChatRequest`에 `max_iterations` 필드 추가 (기본값 2)
+- `harness/state.py`: `HarnessState`에 `max_iterations` 필드 추가
+- `harness/graph.py`: `_route_after_judge`에서 `state.max_iterations` 참조 — 요청별 반복 횟수 제어 가능
+
+**DuckDuckGo 검색 폴백 추가**
+
+- `search/ddg.py` 신규: API 키 없이 DuckDuckGo 검색 (`ddgs` 패키지)
+- `search/client.py`: SearXNG → Tavily → **DuckDuckGo** 3단계 폴백 — Docker/API 키 없이도 항상 웹 검색 동작
+- `requirements.txt`: `ddgs>=0.1.0` 추가
+
+---
+
 ### 2026-06-13
 
 **최신 정보 응답 개선**

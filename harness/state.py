@@ -29,4 +29,5 @@ class HarnessState(TypedDict):
     judge_pass: bool
 
     # 반성 루프 제어
-    iteration: int        # 최대 2회
+    iteration: int        # 현재 반복 횟수
+    max_iterations: int   # 최대 반복 한도 (기본 2, 스케줄 작업은 1)

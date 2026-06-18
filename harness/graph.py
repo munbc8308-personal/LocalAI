@@ -31,7 +31,8 @@ def _route_after_retrieve(state: HarnessState) -> str:
 
 
 def _route_after_judge(state: HarnessState) -> str:
-    if state.get("judge_pass") or state.get("iteration", 0) >= _MAX_ITERATIONS:
+    max_iter = state.get("max_iterations", _MAX_ITERATIONS)
+    if state.get("judge_pass") or state.get("iteration", 0) >= max_iter:
         return END
     # 반성 루프: 오케스트레이터부터 재시도
     return "orchestrate"

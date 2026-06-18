@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 LOCALAI_URL = "http://localhost:8000"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-INFERENCE_TIMEOUT = 300
+INFERENCE_TIMEOUT = 1200  # 20분 — 27B 오케스트레이터 + 검색 + 합성 + 판정 여유
 
 
 async def execute(schedule_id: int) -> str:
@@ -32,8 +32,8 @@ async def execute(schedule_id: int) -> str:
         status = "성공"
         logger.info(f"[schedules] id={schedule_id} '{schedule.name}' 전송 완료")
     except Exception as e:
-        status = f"실패: {e}"
-        logger.error(f"[schedules] id={schedule_id} '{schedule.name}' 오류: {e}")
+        status = f"실패: {type(e).__name__}: {e}"
+        logger.error(f"[schedules] id={schedule_id} '{schedule.name}' 오류: {type(e).__name__}: {e}", exc_info=True)
 
     db.update_run_status(schedule_id, status)
     return status
@@ -47,6 +47,7 @@ async def _query_localai(topic: str) -> str:
                 "model": "localai",
                 "messages": [{"role": "user", "content": topic}],
                 "stream": False,
+                "max_iterations": 1,  # 스케줄 작업은 judge 재시도 없이 1회만 — 시간 절약
             },
         )
         resp.raise_for_status()

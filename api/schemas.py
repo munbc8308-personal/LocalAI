@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
     stream: bool = False
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, gt=0)
+    max_iterations: int = Field(default=2, ge=1, le=5)  # judge 재시도 한도
 
 
 # ── 응답 (non-streaming) ──────────────────────────────────────────────────────

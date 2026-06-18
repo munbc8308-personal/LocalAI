@@ -65,7 +65,7 @@ def _add_job(s: db.Schedule) -> None:
         id=str(s.id),
         kwargs={"schedule_id": s.id},
         replace_existing=True,
-        misfire_grace_time=300,
+        misfire_grace_time=600,  # 10분 — 재부팅 후 모델 로딩 시간 여유
     )
     logger.info(f"[schedules] 등록 id={s.id} '{s.name}' 매일 {s.hour:02d}:{s.minute:02d}")
 
