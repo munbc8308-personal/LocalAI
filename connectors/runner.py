@@ -17,11 +17,12 @@ class ConnectorRunner:
     FastAPI lifespan에서 백그라운드 태스크로 시작.
     """
 
-    def __init__(self, settings: Settings, graph, memory_store: MemoryStore, indexer=None):
+    def __init__(self, settings: Settings, graph, memory_store: MemoryStore, indexer=None, stt=None):
         self._settings = settings
         self._graph = graph
         self._memory_store = memory_store
         self._indexer = indexer
+        self._stt = stt
         self._connectors: list[BaseConnector] = []
         self._tasks: list[asyncio.Task] = []
 
@@ -33,6 +34,7 @@ class ConnectorRunner:
                 token=self._settings.telegram_bot_token,
                 graph=self._graph,
                 memory_store=self._memory_store,
+                stt=self._stt,
             )
             tg.set_indexer(self._indexer)
             connectors.append(tg)

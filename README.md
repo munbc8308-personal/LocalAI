@@ -14,7 +14,7 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 | **RAG** | PDF·TXT·MD 문서 인덱싱 + ChromaDB 벡터 검색 |
 | **웹 검색** | SearXNG → Tavily → DuckDuckGo 3단계 폴백 (API 키 불필요) |
 | **Apple 앱 통합** | 캘린더·리마인더·날씨·노트·메시지·연락처·음악·위치 (orchard CLI) |
-| **Telegram 봇** | 채팅, 파일 업로드(RAG 자동 인덱싱), 대화 히스토리 |
+| **Telegram 봇** | 채팅, 음성 메시지(STT), 파일 업로드(RAG 자동 인덱싱), 대화 히스토리 |
 | **Discord 봇** | 채널별 세션, `!clear` 명령어 |
 | **브리핑 스케줄** | 웹 UI에서 주제·시각 등록 → 매일 자동 조사 후 Telegram 전송 |
 | **MCP 서버** | Claude Code에서 orchard 도구 직접 사용 (`~/.claude/settings.json` 등록) |
@@ -46,8 +46,8 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
         │
         ▼
   MLX-LM 모델 (core/)          ChromaDB (rag/)
-  Gemma 4 (여러 인스턴스)        nomic-embed-text-v1.5
-                                orchard CLI (Apple 앱)
+  Gemma 4 (여러 인스턴스)        nomic-embed-text-v2-moe
+  mlx-whisper (STT)            orchard CLI (Apple 앱)
 ```
 
 ### 에이전트별 모델 할당
@@ -61,6 +61,7 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 | Search | 검색 결과 요약 | gemma-4-26b-a4b-it-4bit (공유) |
 | Summary | 최종 합성 | gemma-4-26b-a4b-it-4bit (공유) |
 | Embedding | 문서 임베딩 | nomic-ai/nomic-embed-text-v2-moe |
+| STT | 음성 → 텍스트 | mlx-community/whisper-large-v3-turbo |
 
 메모리 사용량: **~30 GB** (128 GB 중)
 
@@ -72,6 +73,7 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 - Python 3.11+
 - Docker Desktop (SearXNG 실행용)
 - HuggingFace 계정 (모델 다운로드)
+- ffmpeg (음성 메시지 STT용, `brew install ffmpeg`)
 
 ---
 
@@ -110,7 +112,11 @@ RAG_MODEL=mlx-community/gemma-4-26b-a4b-it-4bit
 JUDGE_MODEL=mlx-community/gemma-4-26b-a4b-it-4bit
 SEARCH_MODEL=mlx-community/gemma-4-26b-a4b-it-4bit
 SUMMARY_MODEL=mlx-community/gemma-4-26b-a4b-it-4bit
-EMBEDDING_MODEL=nomic-ai/nomic-embed-text-v1.5
+EMBEDDING_MODEL=nomic-ai/nomic-embed-text-v2-moe
+
+# STT (음성 인식)
+STT_MODEL=mlx-community/whisper-large-v3-turbo
+STT_ENABLED=true
 
 # API 서버
 API_HOST=0.0.0.0
@@ -239,6 +245,7 @@ curl http://localhost:8000/docs          # Swagger UI
 | `/clear` | 대화 히스토리 초기화 |
 | 텍스트 전송 | AI 답변 |
 | PDF/TXT 파일 전송 | RAG 지식베이스에 자동 인덱싱 |
+| 음성 메시지 전송 | mlx-whisper로 텍스트 변환 후 AI 답변 |
 
 ---
 
@@ -254,7 +261,8 @@ LocalAI/
 ├── core/                 # MLX 모델 관리
 │   ├── config.py         # 설정 (Pydantic Settings)
 │   ├── model.py          # ModelManager · ModelInstance
-│   └── embeddings.py     # EmbeddingManager (nomic)
+│   ├── embeddings.py     # EmbeddingManager (nomic)
+│   └── stt.py            # STTManager (mlx-whisper)
 ├── harness/              # LangGraph 멀티에이전트
 │   ├── graph.py          # 그래프 빌드
 │   ├── nodes.py          # 각 에이전트 노드
@@ -309,6 +317,21 @@ LocalAI/
 ## 변경 이력
 
 ### 2026-07-11
+
+**Telegram 음성 메시지 지원 (STT)**
+
+- `core/stt.py` 신규: `STTManager` — mlx-whisper 래퍼
+  - `whisper-large-v3-turbo` 모델 (한국어 우선, 속도·품질 최적 균형)
+  - ogg/oga(Telegram 음성 포맷) → ffmpeg wav 변환 후 transcribe
+  - numpy 무음 배열로 warmup — 서버 시작 시 모델 미리 로드
+- `connectors/telegram.py`: 음성 핸들러 추가
+  - `@dp.message(lambda m: m.voice or m.audio)` 등록
+  - `_handle_voice()`: 파일 다운로드 → STT → 인식 텍스트 표시 → 하네스 처리
+- `connectors/runner.py`: `stt=stt_manager` 파라미터 추가
+- `connectors/base.py`: `HarnessState`에 `subquery_tools`, `tool_context`, `max_iterations` 누락 필드 추가 (latent bug fix)
+- `api/main.py`: lifespan에 `STTManager.load()` 추가 — 서버 시작 시 STT 모델 로드
+- `requirements.txt`: `mlx-whisper>=0.4.3` 추가
+- 요구사항: `brew install ffmpeg` (ogg 변환용)
 
 **패키지 업그레이드**
 

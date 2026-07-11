@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # 사용자 컨텍스트 (쿼리에 자동 주입)
     user_location: str = "서울, 한국"
 
+    # STT (음성 → 텍스트)
+    stt_model: str = "mlx-community/whisper-large-v3-turbo"
+    stt_enabled: bool = True
+
     # 메신저 커넥터
     telegram_bot_token: str = ""
     discord_bot_token: str = ""

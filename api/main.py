@@ -8,6 +8,7 @@ from api.routes import chat, documents, health, models
 from core.config import get_settings
 from core.embeddings import EmbeddingManager
 from core.model import ModelManager
+from core.stt import STTManager
 from connectors import ConnectorRunner
 from harness import MemoryStore, build_graph
 from rag import Indexer, Retriever
@@ -58,6 +59,18 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("[rag] ChromaDB 초기화 지연")
 
+    # STT 초기화 (음성 인식)
+    stt_manager = None
+    if settings.stt_enabled:
+        stt_manager = STTManager(settings.stt_model)
+        try:
+            import asyncio as _asyncio
+            await _asyncio.get_event_loop().run_in_executor(None, stt_manager.load)
+            logger.info("[startup] STT 모델 로드 완료")
+        except Exception as e:
+            logger.warning(f"[startup] STT 모델 로드 실패: {e}")
+            stt_manager = None
+
     # Search 초기화
     search_client = UnifiedSearchClient(settings)
     await search_client.warmup()
@@ -78,6 +91,7 @@ async def lifespan(app: FastAPI):
         graph=graph,
         memory_store=memory_store,
         indexer=indexer,
+        stt=stt_manager,
     )
     await connector_runner.start()
 

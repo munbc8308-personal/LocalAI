@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import pathlib
+import tempfile
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ChatAction
@@ -16,10 +18,11 @@ _EDIT_INTERVAL_CHARS = 150   # 스트리밍 편집 주기 (글자 수)
 
 
 class TelegramConnector(BaseConnector):
-    def __init__(self, token: str, graph, memory_store: MemoryStore):
+    def __init__(self, token: str, graph, memory_store: MemoryStore, stt=None):
         super().__init__(graph, memory_store)
         self._bot = Bot(token=token)
         self._dp = Dispatcher()
+        self._stt = stt   # STTManager | None
         self._setup_handlers()
 
     # ── 핸들러 등록 ───────────────────────────────────────────────────────────
@@ -56,6 +59,10 @@ class TelegramConnector(BaseConnector):
         async def handle_document(message: types.Message) -> None:
             await self._handle_file(message)
 
+        @dp.message(lambda m: m.voice is not None or m.audio is not None)
+        async def handle_voice(message: types.Message) -> None:
+            await self._handle_voice(message)
+
         @dp.message(lambda m: m.text and not m.text.startswith("/"))
         async def handle_text(message: types.Message) -> None:
             await self._handle_text(message)
@@ -90,6 +97,66 @@ class TelegramConnector(BaseConnector):
             typing_task.cancel()
 
         # 긴 응답 분할 전송
+        chunks = self.split_text(str(response), _MAX_MSG_LEN)
+        await placeholder.edit_text(chunks[0])
+        for chunk in chunks[1:]:
+            await message.answer(chunk)
+
+    # ── 음성 처리 (STT) ───────────────────────────────────────────────────────
+
+    async def _handle_voice(self, message: types.Message) -> None:
+        if not self._stt:
+            await message.answer("음성 인식이 비활성화되어 있습니다.")
+            return
+
+        voice = message.voice or message.audio
+        status = await message.answer("🎙 음성 인식 중...")
+        await self._bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+
+        try:
+            # 음성 파일 다운로드
+            file = await self._bot.get_file(voice.file_id)
+            suffix = pathlib.Path(file.file_path).suffix or ".ogg"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                await self._bot.download_file(file.file_path, tmp)
+                tmp_path = tmp.name
+
+            # STT 변환 (thread executor — 동기 함수)
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(
+                None, self._stt.transcribe, tmp_path
+            )
+            pathlib.Path(tmp_path).unlink(missing_ok=True)
+
+            if not text:
+                await status.edit_text("음성을 인식하지 못했습니다. 다시 시도해주세요.")
+                return
+
+            # 인식된 텍스트를 사용자에게 보여주고 하네스로 전달
+            await status.edit_text(f'🎙 "{text}"')
+
+        except Exception as e:
+            logger.error(f"[telegram] 음성 처리 오류: {e}")
+            await status.edit_text("음성 처리 중 오류가 발생했습니다.")
+            return
+
+        # 인식된 텍스트를 일반 쿼리처럼 처리
+        placeholder = await message.answer("생각 중... ⏳")
+        incoming = IncomingMessage(
+            session_id=str(message.chat.id),
+            user_id=str(message.from_user.id),
+            text=text,
+            platform="telegram",
+        )
+        typing_task = asyncio.create_task(self._keep_typing(message.chat.id))
+        try:
+            response = await self.process(incoming)
+        except Exception as e:
+            logger.error(f"[telegram] 처리 오류: {e}")
+            response = "처리 중 오류가 발생했습니다."
+        finally:
+            typing_task.cancel()
+
         chunks = self.split_text(str(response), _MAX_MSG_LEN)
         await placeholder.edit_text(chunks[0])
         for chunk in chunks[1:]:

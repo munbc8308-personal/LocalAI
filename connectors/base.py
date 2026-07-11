@@ -40,14 +40,17 @@ class BaseConnector(ABC):
             route="",
             subquery_rag="",
             subquery_search="",
+            subquery_tools="",
             rag_context="",
             search_context="",
+            tool_context="",
             code_result="",
             final_response="",
             judge_score=0.0,
             judge_feedback="",
             judge_pass=False,
             iteration=0,
+            max_iterations=2,
         )
 
         try:
