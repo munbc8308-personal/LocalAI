@@ -23,7 +23,7 @@ Route selection rules:
 - "search"     : answer requires current or real-time information — news, prices, trends, product releases, current events, regulations, statistics, or anything that changes over time. When in doubt between "direct" and "search", choose "search" — the model's training data may be outdated.
 - "code"       : user wants code written, debugged, explained, or reviewed
 - "rag+search" : answer needs both private documents and current web information
-- "tools"      : query involves the user's personal Apple data or device control — calendar events, reminders, Apple Notes, iMessage, contacts, Apple Music playback, local weather (Apple Weather), or location services. Use this whenever the user asks about THEIR schedule, THEIR reminders, THEIR notes, or wants to control music/send messages.
+- "tools"      : query involves Apple system data (calendar, reminders, notes, music, location) OR Google Workspace (Sheets, Docs, Drive). Use when user asks about THEIR schedule, THEIR notes, wants to read/update THEIR spreadsheets or documents, or control Apple Music/send messages.
 - "direct"     : pure logic, math, timeless definitions, well-established historical facts, or simple conversational replies with no time-sensitive component
 
 Examples:
@@ -61,7 +61,16 @@ Query: "[현재 날짜: 2026년 06월 19일]\n\n다음 곡으로 넘겨줘"
 {"route":"tools","reasoning":"Apple Music 재생 제어","subquery_rag":"","subquery_search":"","subquery_tools":"음악 다음 곡으로 넘기기"}
 
 Query: "[현재 날짜: 2026년 06월 13일] [현재 시각: 14:30] [사용자 위치: 서울, 한국]\n\n지금 근처 맛집 추천해줘"
-{"route":"search","reasoning":"웹 기반 로컬 정보 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea best restaurants near me 2026","subquery_tools":""}"""
+{"route":"search","reasoning":"웹 기반 로컬 정보 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea best restaurants near me 2026","subquery_tools":""}
+
+Query: "[현재 날짜: 2026년 07월 11일]\n\n원가 계산 시트에서 재료비 항목 보여줘"
+{"route":"tools","reasoning":"Google Sheets 데이터 조회","subquery_rag":"","subquery_search":"","subquery_tools":"원가 계산 스프레드시트에서 재료비 항목 읽기"}
+
+Query: "[현재 날짜: 2026년 07월 11일]\n\n구글 시트에 새 재료 추가해줘: 알루미늄 판 3000원"
+{"route":"tools","reasoning":"Google Sheets 데이터 추가","subquery_rag":"","subquery_search":"","subquery_tools":"구글 시트에 재료 행 추가: 알루미늄 판, 3000원"}
+
+Query: "[현재 날짜: 2026년 07월 11일]\n\n내 드라이브에서 원가 관련 스프레드시트 찾아줘"
+{"route":"tools","reasoning":"Google Drive 파일 검색","subquery_rag":"","subquery_search":"","subquery_tools":"Google Drive에서 원가 스프레드시트 파일 검색"}"""
 
 
 RAG_SYSTEM = """당신은 문서 분석 전문가입니다. 반드시 한국어로 답변하세요.
@@ -139,11 +148,11 @@ JUDGE_SYSTEM = """당신은 AI 응답 품질 평가자입니다.
 기준: 0.75 이상은 실질적으로 좋은 응답, 단순히 무난한 수준이 아님."""
 
 
-TOOLS_SYSTEM = """당신은 사용자 요청을 Apple 시스템 도구 호출로 변환하는 에이전트입니다.
+TOOLS_SYSTEM = """당신은 사용자 요청을 Apple 시스템 또는 Google Workspace 도구 호출로 변환하는 에이전트입니다.
 
 쿼리에 [현재 날짜: YYYY년 MM월 DD일] [현재 시각: HH:MM]이 포함되어 있으면 날짜·시각 계산에 활용하세요.
 
-사용 가능한 도구 목록:
+## Apple 시스템 도구 (orchard)
 - calendar_list_events(from_date, to_date): 일정 조회. 날짜: ISO 8601 (예: 2026-06-19)
 - calendar_create_event(title, start, end, location, notes): 일정 생성. start/end: ISO 8601 datetime
 - reminder_list(status): 리마인더 조회. status: incomplete|complete|all
@@ -161,6 +170,20 @@ TOOLS_SYSTEM = """당신은 사용자 요청을 Apple 시스템 도구 호출로
 - location_current(): 현재 위치
 - location_search(query): 장소 검색
 - location_route(from_place, to_place): 경로 계산
+
+## Google Workspace 도구
+- sheets_read(spreadsheet_id, range): 시트 셀/범위 읽기. range 예: "Sheet1!A1:D10"
+- sheets_get_all(spreadsheet_id, sheet): 시트 전체 데이터 조회
+- sheets_write(spreadsheet_id, range, values): 셀/범위 쓰기. values: 2D 배열
+- sheets_append(spreadsheet_id, sheet, values): 시트에 행 추가. values: [["col1","col2"]]
+- sheets_list_sheets(spreadsheet_id): 스프레드시트의 시트 목록
+- sheets_create(title, share_with): 새 스프레드시트 생성
+- docs_read(document_id): Google 문서 읽기
+- docs_append(document_id, text): 문서 끝에 텍스트 추가
+- drive_search(query, file_type): Drive 파일 검색. file_type: spreadsheet|document|folder
+- drive_list_recent(file_type, limit): 최근 파일 목록
+
+spreadsheet_id와 document_id는 URL 전체를 넣어도 됩니다 (자동 추출).
 
 반드시 유효한 JSON만 출력하세요 (마크다운 금지).
 단일 도구: {"tool": "<name>", "args": {<key: value>}}

@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     discord_bot_token: str = ""
 
+    # Google Workspace (Service Account)
+    google_credentials_path: str = "./data/google_credentials.json"
+
     # 데이터 경로
     vector_db_path: str = "./data/vectordb"
     models_path: str = "./data/models"

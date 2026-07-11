@@ -14,6 +14,7 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 | **RAG** | PDF·TXT·MD 문서 인덱싱 + ChromaDB 벡터 검색 |
 | **웹 검색** | SearXNG → Tavily → DuckDuckGo 3단계 폴백 (API 키 불필요) |
 | **Apple 앱 통합** | 캘린더·리마인더·날씨·노트·메시지·연락처·음악·위치 (orchard CLI) |
+| **Google Workspace** | Sheets 읽기/쓰기/추가, Docs 읽기/편집, Drive 검색 (Service Account) |
 | **Telegram 봇** | 채팅, 음성 메시지(STT), 파일 업로드(RAG 자동 인덱싱), 대화 히스토리 |
 | **Discord 봇** | 채널별 세션, `!clear` 명령어 |
 | **브리핑 스케줄** | 웹 UI에서 주제·시각 등록 → 매일 자동 조사 후 Telegram 전송 |
@@ -132,6 +133,9 @@ USER_LOCATION=서울, 한국        # 날씨·로컬 정보 쿼리에 활용
 # 메신저 봇 (선택)
 TELEGRAM_BOT_TOKEN=
 DISCORD_BOT_TOKEN=
+
+# Google Workspace (Service Account)
+GOOGLE_CREDENTIALS_PATH=./data/google_credentials.json
 
 # 데이터 경로
 VECTOR_DB_PATH=./data/vectordb
@@ -278,10 +282,12 @@ LocalAI/
 │   ├── searxng.py        # SearXNG 어댑터
 │   ├── tavily.py         # Tavily 어댑터
 │   └── ddg.py            # DuckDuckGo 어댑터 (API 키 불필요)
-├── tools/                # Apple 앱 통합 (orchard CLI)
-│   └── orchard.py        # dispatch() — 하네스·MCP 서버 공유
+├── tools/                # 외부 시스템 통합
+│   ├── orchard.py        # Apple 앱 dispatch() — 하네스·MCP 공유
+│   └── google.py         # Google Workspace dispatch() — 하네스·MCP 공유
 ├── mcp/                  # MCP 서버 (Claude Code 연동)
-│   └── orchard_server.py # FastMCP 서버 — ~/.claude/settings.json 등록
+│   ├── orchard_server.py # Apple 앱 FastMCP 서버
+│   └── google_server.py  # Google Workspace FastMCP 서버
 ├── connectors/           # 메신저 연동
 │   ├── base.py           # BaseConnector
 │   ├── telegram.py       # aiogram 3.x
@@ -317,6 +323,20 @@ LocalAI/
 ## 변경 이력
 
 ### 2026-07-11
+
+**Google Workspace 통합 (Sheets / Docs / Drive)**
+
+- `tools/google.py` 신규: Google Workspace dispatch 레이어 (Service Account 인증)
+  - Sheets: 읽기(`sheets_read`), 전체 조회(`sheets_get_all`), 쓰기(`sheets_write`), 행 추가(`sheets_append`), 시트 목록(`sheets_list_sheets`), 새 시트 생성(`sheets_create`)
+  - Docs: 읽기(`docs_read`), 텍스트 추가(`docs_append`)
+  - Drive: 파일 검색(`drive_search`), 최근 파일 목록(`drive_list_recent`)
+  - `spreadsheet_id`/`document_id`에 URL 전체 입력 가능 (자동 ID 추출)
+- `mcp/google_server.py` 신규: FastMCP 서버 — Claude Code에서 위 10개 도구 직접 사용
+- `~/.claude/settings.json`: `mcpServers.google` 등록
+- `harness/nodes.py`: `tool_call` 노드에서 도구 이름으로 orchard/google 자동 분기
+- `harness/prompts.py`: TOOLS_SYSTEM에 Google Workspace 도구 섹션 추가, ORCHESTRATOR에 Google 관련 few-shot 예시 3개 추가
+- `core/config.py`: `GOOGLE_CREDENTIALS_PATH` 설정 추가 (기본: `./data/google_credentials.json`)
+- 인증 설정: Google Cloud Console에서 서비스 계정 키 JSON 다운로드 → `data/google_credentials.json` 저장 → 대상 시트를 서비스 계정 이메일에 편집자 공유
 
 **Telegram 음성 메시지 지원 (STT)**
 

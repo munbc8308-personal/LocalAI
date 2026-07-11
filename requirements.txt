@@ -40,6 +40,11 @@ httpx>=0.27.0
 tavily-python>=0.3.0
 ddgs>=0.1.0
 
+# Google Workspace
+gspread>=6.2.0
+google-auth>=2.55.0
+google-api-python-client>=2.190.0
+
 # MCP
 mcp>=1.28.1
 

@@ -20,6 +20,7 @@ _TIME_SENSITIVE_RE = re.compile(
 )
 
 from tools.orchard import dispatch as orchard_dispatch
+from tools.google import dispatch as google_dispatch, TOOL_NAMES as _GOOGLE_TOOL_NAMES
 
 from .prompts import (
     CODE_SYSTEM,
@@ -195,8 +196,9 @@ def make_nodes(
             tool_name = call.get("tool", "")
             tool_args = call.get("args", {})
             logger.info(f"[tool_call] {tool_name}({tool_args})")
+            fn = google_dispatch if tool_name in _GOOGLE_TOOL_NAMES else orchard_dispatch
             result = await asyncio.get_event_loop().run_in_executor(
-                None, orchard_dispatch, tool_name, tool_args
+                None, fn, tool_name, tool_args
             )
             results.append({"tool": tool_name, "result": result})
 
@@ -215,7 +217,7 @@ def make_nodes(
         if state.get("search_context"):
             parts.append(f"[웹 검색 결과]\n{state['search_context']}")
         if state.get("tool_context"):
-            parts.append(f"[Apple 시스템 도구 결과]\n{state['tool_context']}")
+            parts.append(f"[도구 실행 결과]\n{state['tool_context']}")
         if state.get("code_result"):
             return {
                 "final_response": state["code_result"],
