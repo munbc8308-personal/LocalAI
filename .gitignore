@@ -12,6 +12,8 @@ build/
 # 모델 & 데이터 (용량 큼)
 data/models/
 data/vectordb/
+data/*.log
+data/*.db
 
 # IDE
 .idea/
