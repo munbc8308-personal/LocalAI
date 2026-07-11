@@ -23,14 +23,14 @@ class ModelConfig(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # 모델 ID
-    orchestrator_model: str = "mlx-community/gemma-4-27b-it-8bit"
-    code_model: str = "mlx-community/gemma-4-27b-it-8bit"
-    rag_model: str = "mlx-community/gemma-4-12b-it-8bit"
-    judge_model: str = "mlx-community/gemma-4-12b-it-4bit"
-    search_model: str = "mlx-community/gemma-4-4b-it-8bit"
-    summary_model: str = "mlx-community/gemma-4-4b-it-4bit"
-    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5"
+    # 모델 ID (gemma4 타입만 mlx-lm 0.31.3 호환, gemma4_unified 미지원)
+    orchestrator_model: str = "mlx-community/gemma-4-31b-it-4bit"
+    code_model: str = "mlx-community/gemma-4-31b-it-4bit"
+    rag_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
+    judge_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
+    search_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
+    summary_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
+    embedding_model: str = "nomic-ai/nomic-embed-text-v2-moe"
 
     # 추론 기본값
     max_tokens: int = 4096

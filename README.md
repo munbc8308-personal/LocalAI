@@ -54,15 +54,15 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 
 | 에이전트 | 역할 | 모델 |
 |---|---|---|
-| Orchestrator | 쿼리 분석 · 라우팅 | gemma-4-26B-A4B-it-OptiQ-4bit |
-| Code | 코드 생성 | gemma-4-26B-A4B-it-OptiQ-4bit (공유) |
+| Orchestrator | 쿼리 분석 · 라우팅 | gemma-4-31b-it-4bit |
+| Code | 코드 생성 | gemma-4-31b-it-4bit (공유) |
 | RAG | 문서 기반 답변 | gemma-4-26b-a4b-it-4bit |
 | Judge | 응답 품질 평가 | gemma-4-26b-a4b-it-4bit (공유) |
 | Search | 검색 결과 요약 | gemma-4-26b-a4b-it-4bit (공유) |
 | Summary | 최종 합성 | gemma-4-26b-a4b-it-4bit (공유) |
-| Embedding | 문서 임베딩 | nomic-ai/nomic-embed-text-v1.5 |
+| Embedding | 문서 임베딩 | nomic-ai/nomic-embed-text-v2-moe |
 
-메모리 사용량: **~15.5 GB** (128 GB 중)
+메모리 사용량: **~30 GB** (128 GB 중)
 
 ---
 
@@ -300,13 +300,41 @@ LocalAI/
 
 ## 알려진 제약사항
 
-- **mlx-lm 0.31.3**: Gemma 4 MoE 26B-A4B 계열만 호환. Dense 모델(e4b, 31b)은 k/v projection 아키텍처 불일치로 미동작.
+- **mlx-lm 0.31.3**: `gemma4` 타입 호환 (`31b-it`, `26b-a4b` 계열). `gemma4_unified` 타입(12B QAT 계열)은 미지원.
 - **동시 요청**: MLX GPU 스트림이 thread-local이므로 동일 모델은 직렬 처리됨.
-- **SearXNG**: Docker가 실행 중이어야 검색 기능 사용 가능. 미실행 시 Tavily로 자동 폴백.
+- **SearXNG**: Docker가 실행 중이어야 검색 기능 사용 가능. 미실행 시 Tavily → DuckDuckGo 자동 폴백.
 
 ---
 
 ## 변경 이력
+
+### 2026-07-11
+
+**패키지 업그레이드**
+
+| 패키지 | 이전 | 이후 |
+|---|---|---|
+| mlx | 0.31.2 | **0.32.0** |
+| langgraph | 1.2.2 | 1.2.9 |
+| langchain | 1.3.2 | 1.3.13 |
+| fastapi | 0.136.3 | 0.139.0 |
+| aiogram | 3.28.2 | 3.29.1 |
+| pypdf | 6.12.2 | 6.14.2 |
+| mcp | 1.28.0 | 1.28.1 |
+| APScheduler | 3.11.2 | 3.11.3 |
+
+**모델 업그레이드**
+
+- **Orchestrator/Code**: `gemma-4-26B-A4B-it-OptiQ-4bit` (MoE) → **`gemma-4-31b-it-4bit`** (Dense 31B)
+  - mlx 0.32.0에서 `gemma4` 타입 Dense 모델 정상 동작 확인 (이전엔 k/v projection 불일치로 미동작)
+  - 추론 품질 향상, 특히 복잡한 라우팅/코드 생성에서 개선
+- **Embedding**: `nomic-embed-text-v1.5` → **`nomic-embed-text-v2-moe`**
+  - 768차원 동일 → ChromaDB 재인덱싱 불필요
+  - 100개 언어 지원, 한국어 임베딩 품질 개선
+- **RAG/Judge/Search/Summary**: `gemma-4-26b-a4b-it-4bit` 유지
+  - 12B QAT 계열(`gemma4_unified` 타입)은 mlx-lm 0.31.3 미지원으로 보류
+
+---
 
 ### 2026-06-19
 
