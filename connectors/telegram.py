@@ -73,11 +73,15 @@ class TelegramConnector(BaseConnector):
         session_id = str(message.chat.id)
         user_id = str(message.from_user.id)
 
-        # 타이핑 인디케이터 전송
-        await self._bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        try:
+            await self._bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        except Exception:
+            pass
 
-        # "생각 중..." 메시지 먼저 전송 (스트리밍 UX)
-        placeholder = await message.answer("생각 중... ⏳")
+        try:
+            placeholder = await message.answer("생각 중... ⏳")
+        except Exception:
+            placeholder = None
 
         incoming = IncomingMessage(
             session_id=session_id,
@@ -98,9 +102,15 @@ class TelegramConnector(BaseConnector):
 
         # 긴 응답 분할 전송
         chunks = self.split_text(str(response), _MAX_MSG_LEN)
-        await placeholder.edit_text(chunks[0])
-        for chunk in chunks[1:]:
-            await message.answer(chunk)
+        try:
+            if placeholder:
+                await placeholder.edit_text(chunks[0])
+            else:
+                await message.answer(chunks[0])
+            for chunk in chunks[1:]:
+                await message.answer(chunk)
+        except Exception as e:
+            logger.error(f"[telegram] 응답 전송 실패: {e}")
 
     # ── 음성 처리 (STT) ───────────────────────────────────────────────────────
 
@@ -204,7 +214,10 @@ class TelegramConnector(BaseConnector):
         try:
             for _ in range(20):  # 최대 80초
                 await asyncio.sleep(interval)
-                await self._bot.send_chat_action(chat_id, ChatAction.TYPING)
+                try:
+                    await self._bot.send_chat_action(chat_id, ChatAction.TYPING)
+                except Exception:
+                    pass
         except asyncio.CancelledError:
             pass
 

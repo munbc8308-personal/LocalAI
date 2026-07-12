@@ -76,7 +76,7 @@ class Settings(BaseSettings):
         max_tokens_map = {
             AgentRole.ORCHESTRATOR: 8192,
             AgentRole.CODE: 8192,
-            AgentRole.SUMMARY: 8192,   # 최종 응답 생성 — thinking 여유 필요
+            AgentRole.SUMMARY: 16384,  # thinking 토큰 오버플로 방지 — Gemma4 thinking 최대 ~8k
             AgentRole.SEARCH: 6144,
             AgentRole.RAG: 6144,
             AgentRole.JUDGE: 4096,
