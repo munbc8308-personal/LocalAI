@@ -21,6 +21,7 @@ _TIME_SENSITIVE_RE = re.compile(
 
 from tools.orchard import dispatch as orchard_dispatch
 from tools.google import dispatch as google_dispatch, TOOL_NAMES as _GOOGLE_TOOL_NAMES
+from tools.finance import dispatch as finance_dispatch, TOOL_NAMES as _FINANCE_TOOL_NAMES, _FINANCE_KEYWORDS
 
 from .prompts import (
     CODE_SYSTEM,
@@ -106,18 +107,17 @@ def make_nodes(
         }
 
     # ── RAG ───────────────────────────────────────────────────────────────────
-    async def retrieve(state: HarnessState) -> dict:
-        query = state.get("subquery_rag") or state["query"]
-
+    async def _do_retrieve(query: str) -> str:
+        """RAG 검색 내부 로직 — retrieve / retrieve_and_search 공유."""
         if rag_retriever is None:
             logger.warning("[rag] retriever 미연결 — 빈 컨텍스트 반환")
-            return {"rag_context": ""}
-
+            return ""
         docs = await rag_retriever.aretrieve(query)
+        if not docs:
+            return ""
         context = "\n\n---\n\n".join(
             f"[{i + 1}] {d.page_content}" for i, d in enumerate(docs)
         )
-
         model = model_manager.get(AgentRole.RAG)
         messages = [
             {"role": "system", "content": RAG_SYSTEM},
@@ -125,15 +125,40 @@ def make_nodes(
         ]
         summary = await model.generate(messages)
         logger.info(f"[rag] {len(docs)}개 문서 검색 완료")
-        return {"rag_context": summary}
+        return summary
+
+    async def retrieve(state: HarnessState) -> dict:
+        query = state.get("subquery_rag") or state["query"]
+        return {"rag_context": await _do_retrieve(query)}
 
     # ── Web Search ────────────────────────────────────────────────────────────
-    async def web_search(state: HarnessState) -> dict:
-        query = state.get("subquery_search") or state["query"]
-
+    async def _do_web_search(query: str) -> str:
+        """웹 검색 내부 로직 — web_search / retrieve_and_search 공유.
+        금융 키워드 감지 시 yfinance 실시간 데이터를 검색 결과 앞에 주입."""
         if search_client is None:
             logger.warning("[search] client 미연결 — 빈 컨텍스트 반환")
-            return {"search_context": ""}
+            return ""
+
+        finance_prefix = ""
+        if _FINANCE_KEYWORDS.search(query):
+            try:
+                loop = asyncio.get_event_loop()
+                snap = await loop.run_in_executor(None, finance_dispatch, "get_market_snapshot", {})
+                lines = []
+                for name, data in snap.items():
+                    if name == "as_of":
+                        continue
+                    if "error" in data:
+                        continue
+                    price = data.get("price")
+                    change_pct = data.get("change_pct")
+                    sign = "+" if (change_pct or 0) >= 0 else ""
+                    lines.append(f"{name}: {price} ({sign}{change_pct}%)")
+                if lines:
+                    finance_prefix = f"[실시간 시장 데이터 — {snap.get('as_of', '')}]\n" + "\n".join(lines) + "\n\n"
+                    logger.info(f"[finance] 시장 데이터 주입 완료 ({len(lines)}개 지표)")
+            except Exception as e:
+                logger.warning(f"[finance] 시장 데이터 주입 실패: {e}")
 
         results = await search_client.search(query)
         raw_context = "\n\n".join(
@@ -143,11 +168,26 @@ def make_nodes(
         model = model_manager.get(AgentRole.SEARCH)
         messages = [
             {"role": "system", "content": SEARCH_SYSTEM},
-            {"role": "user", "content": f"Query: {query}\n\nSearch results:\n{raw_context}"},
+            {"role": "user", "content": f"Query: {query}\n\nSearch results:\n{finance_prefix}{raw_context}"},
         ]
         summary = await model.generate(messages)
         logger.info(f"[search] {len(results)}개 결과 처리 완료")
-        return {"search_context": summary}
+        return summary
+
+    async def web_search(state: HarnessState) -> dict:
+        query = state.get("subquery_search") or state["query"]
+        return {"search_context": await _do_web_search(query)}
+
+    # ── RAG + Web Search 병렬 ─────────────────────────────────────────────────
+    async def retrieve_and_search(state: HarnessState) -> dict:
+        """rag+search 라우트: retrieve와 web_search를 병렬 실행."""
+        rag_query = state.get("subquery_rag") or state["query"]
+        search_query = state.get("subquery_search") or state["query"]
+        rag_ctx, search_ctx = await asyncio.gather(
+            _do_retrieve(rag_query),
+            _do_web_search(search_query),
+        )
+        return {"rag_context": rag_ctx, "search_context": search_ctx}
 
     # ── Code ──────────────────────────────────────────────────────────────────
     async def code_gen(state: HarnessState) -> dict:
@@ -196,7 +236,12 @@ def make_nodes(
             tool_name = call.get("tool", "")
             tool_args = call.get("args", {})
             logger.info(f"[tool_call] {tool_name}({tool_args})")
-            fn = google_dispatch if tool_name in _GOOGLE_TOOL_NAMES else orchard_dispatch
+            if tool_name in _FINANCE_TOOL_NAMES:
+                fn = finance_dispatch
+            elif tool_name in _GOOGLE_TOOL_NAMES:
+                fn = google_dispatch
+            else:
+                fn = orchard_dispatch
             result = await asyncio.get_event_loop().run_in_executor(
                 None, fn, tool_name, tool_args
             )
@@ -298,6 +343,7 @@ def make_nodes(
         "orchestrate": orchestrate,
         "retrieve": retrieve,
         "web_search": web_search,
+        "retrieve_and_search": retrieve_and_search,
         "code_gen": code_gen,
         "tool_call": tool_call,
         "synthesize": synthesize,

@@ -59,7 +59,12 @@ def _build_initial_state(request: ChatRequest, session: ConversationMemory) -> H
 
 
 async def _run_graph(graph, state: HarnessState) -> str:
-    result = await graph.ainvoke(state)
+    try:
+        async with asyncio.timeout(120):
+            result = await graph.ainvoke(state)
+    except asyncio.TimeoutError:
+        logger.error("[chat] graph.ainvoke() 120초 초과")
+        return "처리 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
     return result.get("final_response", "")
 
 

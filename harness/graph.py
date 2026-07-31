@@ -18,25 +18,24 @@ def _route_after_orchestrator(state: HarnessState) -> str:
         case "code":
             return "code_gen"
         case "rag+search":
-            return "retrieve"   # retrieve → web_search → synthesize 순서
+            return "retrieve_and_search"  # 병렬 실행
         case "tools":
             return "tool_call"
         case _:
             return "synthesize"
 
 
-def _route_after_retrieve(state: HarnessState) -> str:
-    # rag+search 라우트일 때만 웹 검색도 수행
-    if state.get("route") == "rag+search":
-        return "web_search"
-    return "synthesize"
+def _route_after_synthesize(state: HarnessState) -> str:
+    # code·direct 라우트는 judge 스킵 — 단답·코드 응답에 추가 inference 불필요
+    if state.get("route") in ("code", "direct"):
+        return END
+    return "judge"
 
 
 def _route_after_judge(state: HarnessState) -> str:
     max_iter = state.get("max_iterations", _MAX_ITERATIONS)
     if state.get("judge_pass") or state.get("iteration", 0) >= max_iter:
         return END
-    # 반성 루프: 오케스트레이터부터 재시도
     return "orchestrate"
 
 
@@ -65,11 +64,12 @@ def build_graph(
 
     builder.add_edge(START, "orchestrate")
     builder.add_conditional_edges("orchestrate", _route_after_orchestrator)
-    builder.add_conditional_edges("retrieve", _route_after_retrieve)
+    builder.add_edge("retrieve", "synthesize")
     builder.add_edge("web_search", "synthesize")
+    builder.add_edge("retrieve_and_search", "synthesize")
     builder.add_edge("code_gen", "synthesize")
     builder.add_edge("tool_call", "synthesize")
-    builder.add_edge("synthesize", "judge")
+    builder.add_conditional_edges("synthesize", _route_after_synthesize)
     builder.add_conditional_edges("judge", _route_after_judge)
 
     return builder.compile()

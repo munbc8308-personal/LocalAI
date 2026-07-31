@@ -185,6 +185,10 @@ TOOLS_SYSTEM = """당신은 사용자 요청을 Apple 시스템 또는 Google Wo
 
 spreadsheet_id와 document_id는 URL 전체를 넣어도 됩니다 (자동 추출).
 
+## 금융 시장 데이터 도구 (finance)
+- get_market_snapshot(): S&P 500, NASDAQ, Dow Jones, KOSPI, KOSDAQ, VIX, USD/KRW, BTC, ETH, WTI Oil, Gold 실시간 스냅샷
+- get_quote(ticker): 단일 종목/지수 실시간 시세. ticker 예: "^GSPC"(S&P 500), "AAPL", "005930.KS"(삼성전자), "BTC-USD"
+
 반드시 유효한 JSON만 출력하세요 (마크다운 금지).
 단일 도구: {"tool": "<name>", "args": {<key: value>}}
 복수 도구: {"tools": [{"tool": "<name>", "args": {}}]}"""

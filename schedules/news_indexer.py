@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import html
 import logging
@@ -31,68 +32,72 @@ def set_indexer(indexer) -> None:
     _indexer = indexer
 
 
+async def _crawl_feed(client: httpx.AsyncClient, feed_name: str, url: str) -> list:
+    """단일 RSS 피드 크롤 → Document 리스트 반환."""
+    try:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.text)
+        docs = []
+        for entry in feed.entries[:_MAX_ARTICLES_PER_FEED]:
+            title = entry.get("title", "").strip()
+            summary = entry.get("summary", entry.get("description", "")).strip()
+            link = entry.get("link", "").strip()
+            published = _parse_date(entry)
+            if not title or not link:
+                continue
+            summary = html.unescape(re.sub(r"<[^>]+>", "", summary)).strip()
+            content = f"제목: {title}\n출처: {feed_name} ({published})\n\n{summary}"
+            url_hash = hashlib.sha256(link.encode()).hexdigest()[:16]
+            published_ts = int(published.replace("-", ""))
+            docs.append(Document(
+                page_content=content,
+                metadata={
+                    "source": f"news::{url_hash}",
+                    "type": "news",
+                    "feed_name": feed_name,
+                    "url": link,
+                    "published_at": published,
+                    "published_ts": published_ts,
+                    "chunk_id": 0,
+                },
+            ))
+        logger.info(f"[news_indexer] {feed_name}: {len(docs)}개 수집")
+        return docs
+    except Exception as e:
+        logger.warning(f"[news_indexer] {feed_name} 크롤 실패: {e}")
+        return []
+
+
 async def crawl_and_index() -> None:
     if _indexer is None:
         logger.warning("[news_indexer] indexer 미연결 — 건너뜀")
         return
 
-    total = 0
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        for feed_name, url in _DEFAULT_FEEDS:
-            try:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                feed = feedparser.parse(resp.text)
-                entries = feed.entries[:_MAX_ARTICLES_PER_FEED]
+        # 5개 피드 병렬 크롤
+        results = await asyncio.gather(
+            *[_crawl_feed(client, name, url) for name, url in _DEFAULT_FEEDS],
+            return_exceptions=True,
+        )
 
-                docs = []
-                for entry in entries:
-                    title = entry.get("title", "").strip()
-                    summary = entry.get("summary", entry.get("description", "")).strip()
-                    link = entry.get("link", "").strip()
-                    published = _parse_date(entry)
+    # 전체 합산 + 중복 제거
+    seen: set[str] = set()
+    all_docs = []
+    for r in results:
+        if isinstance(r, Exception):
+            continue
+        for d in r:
+            if d.metadata["source"] not in seen:
+                seen.add(d.metadata["source"])
+                all_docs.append(d)
 
-                    if not title or not link:
-                        continue
+    if all_docs:
+        _indexer.index_documents(all_docs)
+        logger.info(f"[news_indexer] 완료 — 총 {len(all_docs)}개 인덱싱")
+    else:
+        logger.warning("[news_indexer] 인덱싱할 문서 없음")
 
-                    # HTML 태그 · 엔티티 제거
-                    summary = html.unescape(re.sub(r"<[^>]+>", "", summary)).strip()
-
-                    content = f"제목: {title}\n출처: {feed_name} ({published})\n\n{summary}"
-                    url_hash = hashlib.sha256(link.encode()).hexdigest()[:16]
-                    # ChromaDB $lt/$gt 필터는 숫자만 지원 → YYYYMMDD 정수로 저장
-                    published_ts = int(published.replace("-", ""))
-
-                    docs.append(Document(
-                        page_content=content,
-                        metadata={
-                            "source": f"news::{url_hash}",
-                            "type": "news",
-                            "feed_name": feed_name,
-                            "url": link,
-                            "published_at": published,
-                            "published_ts": published_ts,
-                            "chunk_id": 0,
-                        },
-                    ))
-
-                # 같은 피드 내 URL 중복 제거
-                seen: set[str] = set()
-                unique_docs = []
-                for d in docs:
-                    if d.metadata["source"] not in seen:
-                        seen.add(d.metadata["source"])
-                        unique_docs.append(d)
-
-                if unique_docs:
-                    _indexer.index_documents(unique_docs)
-                    total += len(unique_docs)
-                    logger.info(f"[news_indexer] {feed_name}: {len(unique_docs)}개 인덱싱")
-
-            except Exception as e:
-                logger.warning(f"[news_indexer] {feed_name} 크롤 실패: {e}")
-
-    logger.info(f"[news_indexer] 완료 — 총 {total}개 처리")
     await _cleanup_old_news()
 
 

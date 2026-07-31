@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 
 import numpy as np
 import chromadb
@@ -14,10 +15,11 @@ from .indexer import _COLLECTION_NAME
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TOP_K = 5
-_MIN_VECTOR_SCORE = 0.2   # 초기 벡터 검색 임계값 (리랭킹 전이므로 관대하게)
-_EXPAND_FACTOR = 4         # top_k * factor = 초기 후보 수
-_RRF_K = 60               # Reciprocal Rank Fusion 상수
+_MIN_VECTOR_SCORE = 0.2
+_EXPAND_FACTOR = 4
+_RRF_K = 60
 _RERANKER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+_BM25_CHECK_INTERVAL = 30.0  # ChromaDB count() 호출 최소 간격 (초)
 
 
 def _tokenize(text: str) -> list[str]:
@@ -41,11 +43,11 @@ class Retriever:
             metadata={"hnsw:space": "cosine"},
         )
 
-        # BM25 인덱스 (문서 추가/삭제 시 자동 재빌드)
         self._bm25: BM25Okapi | None = None
         self._bm25_texts: list[str] = []
         self._bm25_ids: list[str] = []
         self._bm25_count: int = -1
+        self._bm25_last_check: float = 0.0
 
         # Cross-encoder 리랭커 (다국어 — 한국어 포함)
         self._reranker: CrossEncoder | None = None
@@ -59,7 +61,11 @@ class Retriever:
     # ── BM25 ──────────────────────────────────────────────────────────────────
 
     def _ensure_bm25(self) -> None:
-        """컬렉션이 변경됐을 때만 BM25 인덱스를 재빌드."""
+        """컬렉션 변경 시에만 BM25 재빌드. count() 호출은 30초 간격으로 제한."""
+        now = time.monotonic()
+        if now - self._bm25_last_check < _BM25_CHECK_INTERVAL:
+            return
+        self._bm25_last_check = now
         count = self._collection.count()
         if count == self._bm25_count:
             return

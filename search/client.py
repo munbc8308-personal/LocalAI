@@ -26,18 +26,16 @@ class UnifiedSearchClient:
     async def search(self, query: str) -> list[dict]:
         """
         검색 결과를 nodes.py가 기대하는 dict 리스트로 반환.
+        SearXNG와 Tavily를 병렬 실행 — 먼저 결과 반환한 쪽 사용.
         keys: title, url, snippet
         """
         results: list[SearchResult] = []
 
         if self._use_searxng:
-            results = await self._searxng.search(query)
+            results = await self._parallel_search(query)
 
         if not results:
-            results = await self._tavily.search(query)
-
-        if not results:
-            logger.info("[search] SearXNG·Tavily 결과 없음 → DuckDuckGo 폴백")
+            logger.info("[search] 병렬 검색 결과 없음 → DuckDuckGo 폴백")
             loop = asyncio.get_event_loop()
             results = await loop.run_in_executor(None, self._ddg.search, query)
 
@@ -45,6 +43,25 @@ class UnifiedSearchClient:
             {"title": r.title, "url": r.url, "snippet": r.snippet}
             for r in results
         ]
+
+    async def _parallel_search(self, query: str) -> list[SearchResult]:
+        """SearXNG + Tavily 병렬 실행 — 첫 번째 비어있지 않은 결과 반환."""
+        tasks = [
+            asyncio.create_task(self._searxng.search(query)),
+            asyncio.create_task(self._tavily.search(query)),
+        ]
+        results: list[SearchResult] = []
+        for coro in asyncio.as_completed(tasks):
+            try:
+                candidate = await coro
+                if candidate:
+                    results = candidate
+                    break
+            except Exception as e:
+                logger.debug(f"[search] 병렬 검색 오류: {e}")
+        for t in tasks:
+            t.cancel()
+        return results
 
     async def warmup(self) -> None:
         """앱 시작 시 SearXNG 가용 여부 확인."""
