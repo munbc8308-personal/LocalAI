@@ -7,7 +7,7 @@ from .schemas import SearchResult
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 10.0
-_DEFAULT_MAX_RESULTS = 8
+_DEFAULT_MAX_RESULTS = 15
 
 
 class SearXNGClient:

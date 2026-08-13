@@ -82,7 +82,12 @@ class Settings(BaseSettings):
             AgentRole.JUDGE: 4096,
         }
         max_tokens = max_tokens_map.get(role, self.max_tokens)
-        temp = 0.3 if role == AgentRole.ORCHESTRATOR else self.temperature
+        temp_map = {
+            AgentRole.ORCHESTRATOR: 0.3,  # 라우팅 — 결정론적
+            AgentRole.JUDGE: 0.1,         # 평가 — 매우 결정론적
+            AgentRole.SUMMARY: 0.5,       # 합성 — 사실 우선, 창의성 적당히
+        }
+        temp = temp_map.get(role, self.temperature)
 
         return ModelConfig(
             model_id=model_id_map[role],

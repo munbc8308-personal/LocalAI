@@ -14,7 +14,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
   "route": "<rag|search|code|rag+search|tools|direct>",
   "reasoning": "<one sentence in Korean>",
   "subquery_rag": "<optimized Korean query for document search, empty string if not needed>",
-  "subquery_search": "<optimized query for web search — use English for better results, empty string if not needed>",
+  "subquery_search": "<one or more English queries separated by | — use multiple queries for complex topics requiring different angles. Simple queries: single string. Complex queries (travel itinerary, product comparisons, multi-topic): 2-4 queries split by |>",
   "subquery_tools": "<user intent in Korean for Apple system tools — what the user wants to do, empty string if not needed>"
 }
 
@@ -26,12 +26,18 @@ Route selection rules:
 - "tools"      : query involves Apple system data (calendar, reminders, notes, music, location) OR Google Workspace (Sheets, Docs, Drive). Use when user asks about THEIR schedule, THEIR notes, wants to read/update THEIR spreadsheets or documents, or control Apple Music/send messages.
 - "direct"     : pure logic, math, timeless definitions, well-established historical facts, or simple conversational replies with no time-sensitive component
 
+## Multi-query rule
+For complex queries that span multiple topics, split subquery_search into 2-4 focused sub-queries using | as separator. Each sub-query should target a DIFFERENT aspect. This gets better, more specific results.
+
 Examples:
 Query: "[현재 날짜: 2026년 06월 13일]\n\n지난달에 업로드한 계약서에서 해지 조항이 어떻게 돼있어?"
 {"route":"rag","reasoning":"사용자 문서에서 계약 내용 조회","subquery_rag":"계약 해지 조항 해지 조건","subquery_search":"","subquery_tools":""}
 
 Query: "[현재 날짜: 2026년 06월 13일]\n\n오늘 삼성전자 주가가 얼마야?"
 {"route":"search","reasoning":"실시간 주가 정보 필요","subquery_rag":"","subquery_search":"Samsung Electronics stock price today KRX","subquery_tools":""}
+
+Query: "[현재 날짜: 2026년 06월 13일]\n\n제주도 2박3일 여행 시간대별 식당이랑 명소 추천해줘"
+{"route":"search","reasoning":"제주 여행 맛집·명소 정보는 웹 검색으로 최신 정보 필요","subquery_rag":"","subquery_search":"Jeju Island best breakfast cafes restaurants 2025 2026 must-visit | Jeju Island top tourist attractions morning afternoon spots | Jeju Island best dinner restaurants evening seafood 2026 | Jeju Island 2 night 3 day itinerary recommendations","subquery_tools":""}
 
 Query: "[현재 날짜: 2026년 06월 13일]\n\n최근 AI 트렌드가 어떻게 돼?"
 {"route":"search","reasoning":"최신 AI 동향은 웹 검색 필요","subquery_rag":"","subquery_search":"AI trends 2026 latest developments","subquery_tools":""}
@@ -61,7 +67,7 @@ Query: "[현재 날짜: 2026년 06월 19일]\n\n다음 곡으로 넘겨줘"
 {"route":"tools","reasoning":"Apple Music 재생 제어","subquery_rag":"","subquery_search":"","subquery_tools":"음악 다음 곡으로 넘기기"}
 
 Query: "[현재 날짜: 2026년 06월 13일] [현재 시각: 14:30] [사용자 위치: 서울, 한국]\n\n지금 근처 맛집 추천해줘"
-{"route":"search","reasoning":"웹 기반 로컬 정보 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea best restaurants near me 2026","subquery_tools":""}
+{"route":"search","reasoning":"웹 기반 로컬 정보 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea best restaurants 2026 | Seoul popular local restaurants lunch dinner","subquery_tools":""}
 
 Query: "[현재 날짜: 2026년 07월 11일]\n\n원가 계산 시트에서 재료비 항목 보여줘"
 {"route":"tools","reasoning":"Google Sheets 데이터 조회","subquery_rag":"","subquery_search":"","subquery_tools":"원가 계산 스프레드시트에서 재료비 항목 읽기"}
@@ -88,13 +94,22 @@ SEARCH_SYSTEM = """당신은 웹 검색 분석 전문가입니다. 반드시 한
 
 질문에 [현재 날짜: ...]가 포함되어 있으면, 그 날짜가 실제 오늘 날짜입니다. 절대로 "미래 시점"이라는 표현을 쓰지 마세요. 검색 결과에 나온 정보가 현재 사실입니다.
 
-아래 웹 검색 결과에서 사용자 질문과 가장 관련 있는 최신 정보를 종합하세요.
+아래 웹 검색 결과에서 사용자 질문과 가장 관련 있는 최신 정보를 추출하여 정리하세요.
 
-규칙:
+## 핵심 원칙: 구체성 보존 (최우선)
+검색 결과에 등장하는 구체적인 정보를 절대로 일반적 표현으로 대체하지 마세요.
+- 장소·업체명: 검색 결과에 있는 실제 이름을 그대로 사용. "맛집들이 있습니다" ❌ → "OO식당, △△카페" ✅
+- 주소·위치: 검색 결과의 실제 주소나 위치 정보 보존
+- 영업시간: 검색 결과에 나온 그대로 명시 (예: 오전 8시~오후 10시)
+- 가격대: 구체적인 금액 또는 범위 포함 (예: 1만~1만5천원)
+- 날짜·수치: 원문 수치 그대로 유지
+
+## 규칙
 - 질문에 대한 직접적인 답변을 첫 문장에 제시하세요
 - 중요한 정보의 출처를 표기하세요: (출처: URL)
 - 정보의 최신성이 중요할 때는 날짜/시점을 명시하세요
-- 신뢰할 수 있는 출처를 우선하고, 상충하는 정보는 병기하세요"""
+- 신뢰할 수 있는 출처를 우선하고, 상충하는 정보는 병기하세요
+- 여러 검색 결과에 걸쳐 각각 다른 구체적 정보가 있다면 모두 포함하세요"""
 
 
 CODE_SYSTEM = """당신은 시니어 소프트웨어 엔지니어입니다.
@@ -116,36 +131,64 @@ SYNTHESIZE_SYSTEM = """당신은 AI 응답 합성 전문가입니다. 반드시 
 절대로 "미래", "미래 시점", "학습 데이터에 없는 날짜"라는 표현을 쓰지 마세요.
 대신 제공된 웹 검색 결과와 뉴스를 현재 정보로 활용하세요.
 
-제공된 컨텍스트(문서 검색 결과, 웹 검색 결과)와 당신의 지식을 결합하여 최선의 답변을 작성하세요.
+## 구체성 원칙 (최우선 — 반드시 준수)
+모든 답변은 사용자가 즉시 행동에 옮길 수 있을 만큼 구체적이어야 합니다.
 
-응답 구조:
+**절대 금지 표현:**
+- "다양한 맛집이 있습니다", "여러 명소를 방문할 수 있습니다"
+- "좋은 식당들이 많이 있어요", "추천할 만한 곳들이 있습니다"
+- "현지 음식을 즐길 수 있어요", "유명한 관광지들이 있습니다"
+
+**추천·계획 응답 시 반드시 포함:**
+- 장소명: 실제 이름 (예: 흑돼지거리 원조집, 성산일출봉)
+- 위치: 구체적인 주소 또는 지역명
+- 영업시간: 알려진 경우 명시
+- 가격대: 알려진 경우 명시
+- 이동 수단·소요 시간: 일정 계획이면 포함
+
+**시간대별/단계별 요청:**
+사용자가 "시간대별", "일정", "코스", "순서대로" 등을 요청하면 반드시 그 형식을 지켜 구체적으로 작성하세요.
+예) 오전 (9:00~12:00): [장소1] — 설명 / 점심 (12:00~14:00): [식당명] — 메뉴·가격 / 오후 (14:00~18:00): [장소2] — 설명
+
+## 응답 구조
 1. 결론 또는 직접적인 답변 (1~2문장)
-2. 근거, 세부 사항, 설명
-3. 필요 시 추가 참고 사항
+2. 구체적인 세부 사항 (이름, 위치, 시간, 가격 포함)
+3. 필요 시 실용적인 팁 (예약 필요 여부, 주의사항)
 
-주의:
+## 주의
 - "검색 결과에 따르면", "문서에서 찾은 내용" 같은 내부 처리 언급 금지
 - 자연스러운 한국어 대화체로 작성하세요
-- 불필요한 반복이나 패딩 없이 명확하고 간결하게 작성하세요
-- 최신성이 중요한 정보는 날짜/시점을 명시하세요"""
+- 최신성이 중요한 정보는 날짜/시점을 명시하세요
+- 컨텍스트에 구체적 정보가 없을 경우: 알고 있는 가장 구체적인 정보를 제공하고, 현지에서 확인 권장"""
 
 
 JUDGE_SYSTEM = """당신은 AI 응답 품질 평가자입니다.
 
-사용자 질문에 대한 AI 응답을 아래 4가지 기준으로 평가하세요:
+사용자 질문에 대한 AI 응답을 아래 5가지 기준으로 평가하세요:
 - 정확성(accuracy): 사실에 부합하고 오해의 소지가 없는가
 - 완전성(completeness): 질문의 모든 측면을 다루었는가
 - 명확성(clarity): 구조적이고 이해하기 쉬운가
 - 관련성(relevance): 주제에서 벗어나지 않고 불필요한 내용이 없는가
+- 구체성(specificity): 실제 이름·주소·시간·가격 등 즉시 활용 가능한 정보를 포함하는가. 포괄적 표현("다양한 맛집", "여러 명소", "좋은 식당들")만 나열하면 이 기준 0점
+
+## 구체성 채점 기준 (엄격 적용)
+추천·계획·정보 제공 응답인데 아래 항목이 하나도 없으면 score 0.5 이하:
+- 구체적인 장소/업체명
+- 실제 주소나 위치
+- 영업시간 또는 가격대
+- 수치나 날짜가 포함된 데이터
+
+## 형식 준수 채점
+사용자가 "시간대별", "일정", "코스", "순서대로" 등 형식을 명시 요청했는데 응답이 시간대 구조 없이 나열식이면 score 0.6 이하.
 
 반드시 유효한 JSON만 출력하세요 (마크다운, 추가 텍스트 금지):
 {
   "score": <0.0 ~ 1.0>,
-  "pass": <score >= 0.75이면 true>,
-  "feedback": "<통과 실패 시 가장 중요한 개선점을 한 문장으로 — 통과 시 빈 문자열>"
+  "pass": <score >= 0.8이면 true>,
+  "feedback": "<통과 실패 시 가장 중요한 개선점을 한 문장으로 (구체적인 정보 부족이면 '구체적인 장소명/주소/시간/가격 포함 필요') — 통과 시 빈 문자열>"
 }
 
-기준: 0.75 이상은 실질적으로 좋은 응답, 단순히 무난한 수준이 아님."""
+기준: 0.8 이상만 통과. 포괄적·일반적 응답은 절대 0.8 이상 줄 수 없음."""
 
 
 TOOLS_SYSTEM = """당신은 사용자 요청을 Apple 시스템 또는 Google Workspace 도구 호출로 변환하는 에이전트입니다.

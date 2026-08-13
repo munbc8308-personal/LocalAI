@@ -160,7 +160,27 @@ def make_nodes(
             except Exception as e:
                 logger.warning(f"[finance] 시장 데이터 주입 실패: {e}")
 
-        results = await search_client.search(query)
+        # "|" 구분 멀티 쿼리 지원 — 병렬 실행 후 결과 합산
+        sub_queries = [q.strip() for q in query.split("|") if q.strip()]
+        if len(sub_queries) > 1:
+            search_results_list = await asyncio.gather(
+                *[search_client.search(q) for q in sub_queries],
+                return_exceptions=True,
+            )
+            seen_urls: set[str] = set()
+            all_results: list[dict] = []
+            for res in search_results_list:
+                if isinstance(res, Exception):
+                    continue
+                for r in res:
+                    if r["url"] not in seen_urls:
+                        seen_urls.add(r["url"])
+                        all_results.append(r)
+            results = all_results
+            logger.info(f"[search] 멀티 쿼리 {len(sub_queries)}개 → 합산 {len(results)}개 결과")
+        else:
+            results = await search_client.search(query)
+
         raw_context = "\n\n".join(
             f"[{r['title']}]({r['url']})\n{r['snippet']}" for r in results
         )
