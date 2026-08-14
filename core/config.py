@@ -23,13 +23,17 @@ class ModelConfig(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # 모델 ID (gemma4 타입만 mlx-lm 0.31.3 호환, gemma4_unified 미지원)
-    orchestrator_model: str = "mlx-community/gemma-4-31b-it-4bit"
+    # 모델 ID
+    # ORCHESTRATOR: e4b-8bit — 라우팅/쿼리 생성에 31B 불필요, 8bit MoE로 품질 유지 + 3x 속도
+    # CODE: 31b-4bit 유지 — 코드 생성은 최고 파라미터 수 필요
+    # RAG/SUMMARY: OptiQ-4bit — 표준 4bit 대비 더 나은 양자화 알고리즘, 16GB(↓13GB)
+    # JUDGE: e4b-4bit — pass/fail 판단에 26B 낭비, 4B MoE로 충분
+    orchestrator_model: str = "mlx-community/gemma-4-e4b-it-8bit"
     code_model: str = "mlx-community/gemma-4-31b-it-4bit"
-    rag_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
-    judge_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
-    search_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
-    summary_model: str = "mlx-community/gemma-4-26b-a4b-it-4bit"
+    rag_model: str = "mlx-community/gemma-4-26B-A4B-it-OptiQ-4bit"
+    judge_model: str = "mlx-community/gemma-4-e4b-it-4bit"
+    search_model: str = "mlx-community/gemma-4-26B-A4B-it-OptiQ-4bit"
+    summary_model: str = "mlx-community/gemma-4-26B-A4B-it-OptiQ-4bit"
     embedding_model: str = "nomic-ai/nomic-embed-text-v2-moe"
 
     # 추론 기본값
