@@ -26,8 +26,8 @@ def _route_after_orchestrator(state: HarnessState) -> str:
 
 
 def _route_after_synthesize(state: HarnessState) -> str:
-    # code·direct 라우트는 judge 스킵 — 단답·코드 응답에 추가 inference 불필요
-    if state.get("route") in ("code", "direct"):
+    # judge는 rag/rag+search 문서 기반 답변에만 사용 — 나머지 2-3s 절감
+    if state.get("route") in ("code", "direct", "search", "tools"):
         return END
     return "judge"
 

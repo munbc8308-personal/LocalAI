@@ -8,6 +8,7 @@ from aiogram.enums import ChatAction
 from aiogram.filters import Command
 
 from harness import MemoryStore
+from harness.stream_ctx import set_stream_queue, clear_stream_queue
 
 from .base import BaseConnector, IncomingMessage
 
@@ -90,18 +91,53 @@ class TelegramConnector(BaseConnector):
             platform="telegram",
         )
 
-        # 타이핑 인디케이터는 별도 태스크로 실행 — 응답 완료 시 즉시 취소
+        # 스트림 큐 생성 — synthesize 노드가 이 큐에 토큰을 실시간으로 씀
+        stream_q: asyncio.Queue[str | None] = asyncio.Queue()
+        set_stream_queue(stream_q)
+
+        # 그래프를 백그라운드 태스크로 실행 (asyncio.create_task은 현재 컨텍스트 복사)
         typing_task = asyncio.create_task(self._keep_typing(message.chat.id))
+        graph_task = asyncio.create_task(self._run_with_error_handling(incoming))
+
+        # synthesize 토큰 스트리밍 → Telegram 실시간 편집
+        accumulated = ""
+        last_edit_len = 0
+        first_chunk = True
         try:
-            response = await self.process(incoming)
-        except Exception as e:
-            logger.error(f"[telegram] 처리 오류: {e}")
-            response = "처리 중 오류가 발생했습니다."
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(stream_q.get(), timeout=90.0)
+                except asyncio.TimeoutError:
+                    logger.warning("[telegram] 스트림 타임아웃 — 그래프 완료 대기")
+                    break
+                if chunk is None:  # sentinel — synthesize 완료
+                    break
+                if first_chunk:
+                    typing_task.cancel()  # 첫 토큰 도착 시 타이핑 인디케이터 즉시 해제
+                    first_chunk = False
+                accumulated += chunk
+                # Telegram API rate limit 고려 — 200자마다 편집
+                if len(accumulated) - last_edit_len >= 200 and placeholder:
+                    try:
+                        await placeholder.edit_text(accumulated + " ▌")
+                        last_edit_len = len(accumulated)
+                    except Exception:
+                        pass
         finally:
             typing_task.cancel()
 
-        # 긴 응답 분할 전송
-        chunks = self.split_text(str(response), _MAX_MSG_LEN)
+        # 그래프 완료 대기 (judge가 있는 rag 라우트 등)
+        try:
+            response = await graph_task
+        except Exception as e:
+            logger.error(f"[telegram] 처리 오류: {e}")
+            response = accumulated or "처리 중 오류가 발생했습니다."
+
+        clear_stream_queue()
+
+        # 최종 응답 전송 (judge retry로 응답이 달라질 수 있으므로 graph 결과 우선)
+        final = response or accumulated or "응답을 생성하지 못했습니다."
+        chunks = self.split_text(str(final), _MAX_MSG_LEN)
         try:
             if placeholder:
                 await placeholder.edit_text(chunks[0])
@@ -111,6 +147,14 @@ class TelegramConnector(BaseConnector):
                 await message.answer(chunk)
         except Exception as e:
             logger.error(f"[telegram] 응답 전송 실패: {e}")
+
+    async def _run_with_error_handling(self, incoming: IncomingMessage) -> str:
+        """그래프 실행 래퍼 — 예외를 잡아 에러 메시지 반환."""
+        try:
+            return await self.process(incoming)
+        except Exception as e:
+            logger.error(f"[telegram] 그래프 실행 오류: {e}")
+            return "처리 중 오류가 발생했습니다."
 
     # ── 음성 처리 (STT) ───────────────────────────────────────────────────────
 

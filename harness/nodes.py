@@ -22,6 +22,7 @@ _TIME_SENSITIVE_RE = re.compile(
 from tools.orchard import dispatch as orchard_dispatch
 from tools.google import dispatch as google_dispatch, TOOL_NAMES as _GOOGLE_TOOL_NAMES
 from tools.finance import dispatch as finance_dispatch, TOOL_NAMES as _FINANCE_TOOL_NAMES, _FINANCE_KEYWORDS
+from harness.stream_ctx import get_stream_queue
 
 from .prompts import (
     CODE_SYSTEM,
@@ -181,18 +182,15 @@ def make_nodes(
         else:
             results = await search_client.search(query)
 
+        # SEARCH 모델 제거 — raw snippets 직접 반환 (SUMMARY가 동일 모델이므로 중복 inference 불필요)
+        top_results = results[:12]
         raw_context = "\n\n".join(
-            f"[{r['title']}]({r['url']})\n{r['snippet']}" for r in results
+            f"[{i+1}] {r['title']}\n출처: {r['url']}\n{r['snippet']}"
+            for i, r in enumerate(top_results)
         )
-
-        model = model_manager.get(AgentRole.SEARCH)
-        messages = [
-            {"role": "system", "content": SEARCH_SYSTEM},
-            {"role": "user", "content": f"Query: {query}\n\nSearch results:\n{finance_prefix}{raw_context}"},
-        ]
-        summary = await model.generate(messages)
-        logger.info(f"[search] {len(results)}개 결과 처리 완료")
-        return summary
+        context = f"{finance_prefix}[웹 검색 결과 — 쿼리: {query.split('|')[0].strip()}]\n\n{raw_context}"
+        logger.info(f"[search] {len(results)}개 결과 → top {len(top_results)}개 직접 반환")
+        return context
 
     async def web_search(state: HarnessState) -> dict:
         query = state.get("subquery_search") or state["query"]
@@ -315,7 +313,20 @@ def make_nodes(
             *state["messages"],
             {"role": "user", "content": user_content},
         ]
-        response = await model.generate(messages)
+
+        # 스트림 큐가 있으면 token streaming — Telegram 실시간 전송용
+        stream_queue = get_stream_queue()
+        if stream_queue is not None:
+            response_parts: list[str] = []
+            try:
+                async for chunk in model.stream(messages):
+                    response_parts.append(chunk)
+                    await stream_queue.put(chunk)
+            finally:
+                await stream_queue.put(None)  # sentinel
+            response = "".join(response_parts)
+        else:
+            response = await model.generate(messages)
 
         # thinking 토큰이 전체 max_tokens를 소진한 경우 — 빈 응답 fallback
         if not response:
