@@ -164,8 +164,16 @@ class TelegramConnector(BaseConnector):
             return
 
         voice = message.voice or message.audio
-        status = await message.answer("🎙 음성 인식 중...")
-        await self._bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+
+        try:
+            status = await message.answer("🎙 음성 인식 중...")
+        except Exception:
+            status = None
+
+        try:
+            await self._bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        except Exception:
+            pass
 
         try:
             # 음성 파일 다운로드
@@ -176,26 +184,41 @@ class TelegramConnector(BaseConnector):
                 tmp_path = tmp.name
 
             # STT 변환 (thread executor — 동기 함수)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             text = await loop.run_in_executor(
                 None, self._stt.transcribe, tmp_path
             )
             pathlib.Path(tmp_path).unlink(missing_ok=True)
 
             if not text:
-                await status.edit_text("음성을 인식하지 못했습니다. 다시 시도해주세요.")
+                if status:
+                    try:
+                        await status.edit_text("음성을 인식하지 못했습니다. 다시 시도해주세요.")
+                    except Exception:
+                        pass
                 return
 
-            # 인식된 텍스트를 사용자에게 보여주고 하네스로 전달
-            await status.edit_text(f'🎙 "{text}"')
+            if status:
+                try:
+                    await status.edit_text(f'🎙 "{text}"')
+                except Exception:
+                    pass
 
         except Exception as e:
             logger.error(f"[telegram] 음성 처리 오류: {e}")
-            await status.edit_text("음성 처리 중 오류가 발생했습니다.")
+            if status:
+                try:
+                    await status.edit_text("음성 처리 중 오류가 발생했습니다.")
+                except Exception:
+                    pass
             return
 
         # 인식된 텍스트를 일반 쿼리처럼 처리
-        placeholder = await message.answer("생각 중... ⏳")
+        try:
+            placeholder = await message.answer("생각 중... ⏳")
+        except Exception:
+            placeholder = None
+
         incoming = IncomingMessage(
             session_id=str(message.chat.id),
             user_id=str(message.from_user.id),
@@ -206,15 +229,21 @@ class TelegramConnector(BaseConnector):
         try:
             response = await self.process(incoming)
         except Exception as e:
-            logger.error(f"[telegram] 처리 오류: {e}")
+            logger.error(f"[telegram] 음성 쿼리 처리 오류: {e}")
             response = "처리 중 오류가 발생했습니다."
         finally:
             typing_task.cancel()
 
         chunks = self.split_text(str(response), _MAX_MSG_LEN)
-        await placeholder.edit_text(chunks[0])
-        for chunk in chunks[1:]:
-            await message.answer(chunk)
+        try:
+            if placeholder:
+                await placeholder.edit_text(chunks[0])
+            else:
+                await message.answer(chunks[0])
+            for chunk in chunks[1:]:
+                await message.answer(chunk)
+        except Exception as e:
+            logger.error(f"[telegram] 음성 응답 전송 실패: {e}")
 
     # ── 파일 처리 (RAG 인덱싱) ─────────────────────────────────────────────────
 
