@@ -37,10 +37,7 @@ Query: "[현재 날짜: 2026년 06월 13일]\n\n오늘 삼성전자 주가가 �
 {"route":"search","reasoning":"실시간 주가 정보 필요","subquery_rag":"","subquery_search":"Samsung Electronics stock price today KRX","subquery_tools":""}
 
 Query: "[현재 날짜: 2026년 06월 13일]\n\n제주도 2박3일 여행 시간대별 식당이랑 명소 추천해줘"
-{"route":"search","reasoning":"제주 여행 맛집·명소 정보는 웹 검색으로 최신 정보 필요","subquery_rag":"","subquery_search":"Jeju Island best breakfast cafes restaurants 2025 2026 must-visit | Jeju Island top tourist attractions morning afternoon spots | Jeju Island best dinner restaurants evening seafood 2026 | Jeju Island 2 night 3 day itinerary recommendations","subquery_tools":""}
-
-Query: "[현재 날짜: 2026년 06월 13일]\n\n최근 AI 트렌드가 어떻게 돼?"
-{"route":"search","reasoning":"최신 AI 동향은 웹 검색 필요","subquery_rag":"","subquery_search":"AI trends 2026 latest developments","subquery_tools":""}
+{"route":"search","reasoning":"제주 여행 맛집·명소 정보는 웹 검색으로 최신 정보 필요","subquery_rag":"","subquery_search":"Jeju Island best breakfast cafes restaurants 2026 must-visit | Jeju Island top attractions morning afternoon | Jeju Island best dinner seafood restaurants 2026 | Jeju 2 night 3 day itinerary","subquery_tools":""}
 
 Query: "[현재 날짜: 2026년 06월 13일]\n\n파이썬으로 CSV 파일 읽는 코드 짜줘"
 {"route":"code","reasoning":"코드 작성 요청","subquery_rag":"","subquery_search":"","subquery_tools":""}
@@ -51,32 +48,8 @@ Query: "[현재 날짜: 2026년 06월 13일]\n\n빠른 정렬 알고리즘의 �
 Query: "[현재 날짜: 2026년 06월 19일] [현재 시각: 09:00] [사용자 위치: 서울, 한국]\n\n오늘 일정이 어떻게 돼?"
 {"route":"tools","reasoning":"사용자 개인 캘린더 조회","subquery_rag":"","subquery_search":"","subquery_tools":"오늘 캘린더 일정 조회"}
 
-Query: "[현재 날짜: 2026년 06월 19일] [현재 시각: 08:30] [사용자 위치: 서울, 한국]\n\n오늘 날씨 어때?"
-{"route":"tools","reasoning":"Apple Weather로 현재 위치 날씨 조회","subquery_rag":"","subquery_search":"","subquery_tools":"서울 오늘 날씨 조회"}
-
-Query: "[현재 날짜: 2026년 06월 19일]\n\n내일 오전 10시에 팀 미팅 캘린더에 추가해줘"
-{"route":"tools","reasoning":"캘린더 일정 생성","subquery_rag":"","subquery_search":"","subquery_tools":"2026-06-20 10:00 팀 미팅 캘린더 일정 생성"}
-
-Query: "[현재 날짜: 2026년 06월 19일]\n\n리마인더에 약 먹기 추가해줘"
-{"route":"tools","reasoning":"리마인더 생성","subquery_rag":"","subquery_search":"","subquery_tools":"리마인더 생성: 약 먹기"}
-
-Query: "[현재 날짜: 2026년 06월 19일]\n\n지금 뭐 듣고 있어?"
-{"route":"tools","reasoning":"Apple Music 현재 재생 정보 조회","subquery_rag":"","subquery_search":"","subquery_tools":"현재 재생 중인 음악 정보"}
-
-Query: "[현재 날짜: 2026년 06월 19일]\n\n다음 곡으로 넘겨줘"
-{"route":"tools","reasoning":"Apple Music 재생 제어","subquery_rag":"","subquery_search":"","subquery_tools":"음악 다음 곡으로 넘기기"}
-
-Query: "[현재 날짜: 2026년 06월 13일] [현재 시각: 14:30] [사용자 위치: 서울, 한국]\n\n지금 근처 맛집 추천해줘"
-{"route":"search","reasoning":"웹 기반 로컬 정보 검색 필요","subquery_rag":"","subquery_search":"Seoul Korea best restaurants 2026 | Seoul popular local restaurants lunch dinner","subquery_tools":""}
-
 Query: "[현재 날짜: 2026년 07월 11일]\n\n원가 계산 시트에서 재료비 항목 보여줘"
-{"route":"tools","reasoning":"Google Sheets 데이터 조회","subquery_rag":"","subquery_search":"","subquery_tools":"원가 계산 스프레드시트에서 재료비 항목 읽기"}
-
-Query: "[현재 날짜: 2026년 07월 11일]\n\n구글 시트에 새 재료 추가해줘: 알루미늄 판 3000원"
-{"route":"tools","reasoning":"Google Sheets 데이터 추가","subquery_rag":"","subquery_search":"","subquery_tools":"구글 시트에 재료 행 추가: 알루미늄 판, 3000원"}
-
-Query: "[현재 날짜: 2026년 07월 11일]\n\n내 드라이브에서 원가 관련 스프레드시트 찾아줘"
-{"route":"tools","reasoning":"Google Drive 파일 검색","subquery_rag":"","subquery_search":"","subquery_tools":"Google Drive에서 원가 스프레드시트 파일 검색"}"""
+{"route":"tools","reasoning":"Google Sheets 데이터 조회","subquery_rag":"","subquery_search":"","subquery_tools":"원가 계산 스프레드시트에서 재료비 항목 읽기"}"""
 
 
 RAG_SYSTEM = """당신은 문서 분석 전문가입니다. 반드시 한국어로 답변하세요.
@@ -124,6 +97,13 @@ CODE_SYSTEM = """당신은 시니어 소프트웨어 엔지니어입니다.
 
 
 SYNTHESIZE_SYSTEM = """당신은 AI 응답 합성 전문가입니다. 반드시 한국어로 답변하세요.
+
+## 문서 컨텍스트 처리
+[문서 검색 결과]가 제공된 경우:
+- 첫 문장에 질문에 대한 직접 답변을 제시하세요
+- 출처는 [1], [2] 형식으로 인라인 표기하세요
+- 문서에 해당 내용이 없으면 명확히 밝히세요
+- "검색 결과에 따르면", "문서에서 찾은 내용" 같은 내부 처리 언급 금지
 
 ## 날짜 인식 규칙 (매우 중요)
 질문에 [현재 날짜: YYYY년 MM월 DD일]이 포함되어 있으면, 그 날짜가 실제 오늘 날짜입니다.

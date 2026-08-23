@@ -109,7 +109,7 @@ def make_nodes(
 
     # ── RAG ───────────────────────────────────────────────────────────────────
     async def _do_retrieve(query: str) -> str:
-        """RAG 검색 내부 로직 — retrieve / retrieve_and_search 공유."""
+        """RAG 검색 내부 로직 — raw docs 반환, 요약은 synthesize에서 처리 (중간 26B 호출 제거)."""
         if rag_retriever is None:
             logger.warning("[rag] retriever 미연결 — 빈 컨텍스트 반환")
             return ""
@@ -119,14 +119,8 @@ def make_nodes(
         context = "\n\n---\n\n".join(
             f"[{i + 1}] {d.page_content}" for i, d in enumerate(docs)
         )
-        model = model_manager.get(AgentRole.RAG)
-        messages = [
-            {"role": "system", "content": RAG_SYSTEM},
-            {"role": "user", "content": f"Query: {query}\n\nDocuments:\n{context}"},
-        ]
-        summary = await model.generate(messages)
-        logger.info(f"[rag] {len(docs)}개 문서 검색 완료")
-        return summary
+        logger.info(f"[rag] {len(docs)}개 문서 검색 완료 (raw 반환)")
+        return context
 
     async def retrieve(state: HarnessState) -> dict:
         query = state.get("subquery_rag") or state["query"]
@@ -223,9 +217,9 @@ def make_nodes(
     async def tool_call(state: HarnessState) -> dict:
         intent = state.get("subquery_tools") or state["query"]
 
-        # 소형 모델로 intent → tool+args JSON 변환
+        # ORCHESTRATOR(e4b-8bit)로 intent → tool+args JSON 변환 (SEARCH 26B 불필요)
         now = datetime.now()
-        model = model_manager.get(AgentRole.SEARCH)
+        model = model_manager.get(AgentRole.ORCHESTRATOR)
         messages = [
             {"role": "system", "content": TOOLS_SYSTEM},
             {
@@ -260,7 +254,7 @@ def make_nodes(
                 fn = google_dispatch
             else:
                 fn = orchard_dispatch
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None, fn, tool_name, tool_args
             )
             results.append({"tool": tool_name, "result": result})
