@@ -60,7 +60,8 @@ class TelegramConnector(BaseConnector):
         async def handle_document(message: types.Message) -> None:
             await self._handle_file(message)
 
-        @dp.message(lambda m: m.voice is not None or m.audio is not None)
+        @dp.message(lambda m: m.voice is not None or m.audio is not None
+                    or m.video_note is not None or m.video is not None)
         async def handle_voice(message: types.Message) -> None:
             await self._handle_voice(message)
 
@@ -163,7 +164,8 @@ class TelegramConnector(BaseConnector):
             await message.answer("음성 인식이 비활성화되어 있습니다.")
             return
 
-        voice = message.voice or message.audio
+        media = message.voice or message.audio or message.video_note or message.video
+        is_video = message.video_note is not None or message.video is not None
 
         try:
             status = await message.answer("🎙 음성 인식 중...")
@@ -176,12 +178,27 @@ class TelegramConnector(BaseConnector):
             pass
 
         try:
-            # 음성 파일 다운로드
-            file = await self._bot.get_file(voice.file_id)
-            suffix = pathlib.Path(file.file_path).suffix or ".ogg"
+            # 음성/영상 파일 다운로드
+            file = await self._bot.get_file(media.file_id)
+            suffix = pathlib.Path(file.file_path).suffix or (".mp4" if is_video else ".ogg")
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 await self._bot.download_file(file.file_path, tmp)
                 tmp_path = tmp.name
+
+            # 영상 파일이면 ffmpeg으로 오디오 추출 후 STT
+            if is_video:
+                wav_path = tmp_path.replace(suffix, ".wav")
+                import subprocess as _sp
+                try:
+                    _sp.run(
+                        ["ffmpeg", "-y", "-i", tmp_path, "-vn",
+                         "-acodec", "pcm_s16le", "-ar", "16000", wav_path],
+                        capture_output=True, check=True, timeout=30,
+                    )
+                    pathlib.Path(tmp_path).unlink(missing_ok=True)
+                    tmp_path = wav_path
+                except Exception as e:
+                    logger.warning(f"[telegram] 영상 오디오 추출 실패, 원본 시도: {e}")
 
             # STT 변환 (thread executor — 동기 함수)
             loop = asyncio.get_running_loop()
