@@ -230,7 +230,7 @@ class TelegramConnector(BaseConnector):
                     pass
             return
 
-        # 인식된 텍스트를 일반 쿼리처럼 처리
+        # 인식된 텍스트를 텍스트 핸들러와 동일하게 스트리밍 처리
         try:
             placeholder = await message.answer("생각 중... ⏳")
         except Exception:
@@ -242,16 +242,48 @@ class TelegramConnector(BaseConnector):
             text=text,
             platform="telegram",
         )
+
+        stream_q: asyncio.Queue[str | None] = asyncio.Queue()
+        set_stream_queue(stream_q)
+
         typing_task = asyncio.create_task(self._keep_typing(message.chat.id))
+        graph_task = asyncio.create_task(self._run_with_error_handling(incoming))
+
+        accumulated = ""
+        last_edit_len = 0
+        first_chunk = True
         try:
-            response = await self.process(incoming)
-        except Exception as e:
-            logger.error(f"[telegram] 음성 쿼리 처리 오류: {e}")
-            response = "처리 중 오류가 발생했습니다."
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(stream_q.get(), timeout=90.0)
+                except asyncio.TimeoutError:
+                    logger.warning("[telegram] 음성 스트림 타임아웃")
+                    break
+                if chunk is None:
+                    break
+                if first_chunk:
+                    typing_task.cancel()
+                    first_chunk = False
+                accumulated += chunk
+                if len(accumulated) - last_edit_len >= 200 and placeholder:
+                    try:
+                        await placeholder.edit_text(accumulated + " ▌")
+                        last_edit_len = len(accumulated)
+                    except Exception:
+                        pass
         finally:
             typing_task.cancel()
 
-        chunks = self.split_text(str(response), _MAX_MSG_LEN)
+        try:
+            response = await graph_task
+        except Exception as e:
+            logger.error(f"[telegram] 음성 쿼리 처리 오류: {e}")
+            response = accumulated or "처리 중 오류가 발생했습니다."
+
+        clear_stream_queue()
+
+        final = response or accumulated or "응답을 생성하지 못했습니다."
+        chunks = self.split_text(str(final), _MAX_MSG_LEN)
         try:
             if placeholder:
                 await placeholder.edit_text(chunks[0])
