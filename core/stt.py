@@ -29,7 +29,7 @@ class STTManager:
         # 1초짜리 무음 배열로 warmup — 파일 없이도 모델 가중치 메모리 적재
         silence = np.zeros(16000, dtype=np.float32)
         try:
-            mlx_whisper.transcribe(silence, path_or_hf_id=self._model_id)
+            mlx_whisper.transcribe(silence, path_or_hf_repo=self._model_id)
         except Exception:
             pass  # 무음 처리 실패해도 모델은 로드됨
         logger.info("[stt] STT 모델 준비 완료")
@@ -60,7 +60,7 @@ class STTManager:
         try:
             result = mlx_whisper.transcribe(
                 str(work_path),
-                path_or_hf_id=self._model_id,
+                path_or_hf_repo=self._model_id,
                 language="ko",       # 한국어 우선, 자동감지도 잘 됨
                 word_timestamps=False,
             )
