@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import chat, documents, health, models
+from api.routes import chat, documents, health, models, ui
 from core.config import get_settings
 from core.embeddings import EmbeddingManager
 from core.model import ModelManager
@@ -129,6 +129,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(ui.router, tags=["ui"])
     app.include_router(health.router, tags=["system"])
     app.include_router(models.router, tags=["models"])
     app.include_router(chat.router, tags=["chat"])
