@@ -55,16 +55,16 @@ OpenAI 호환 API, 멀티에이전트 하네스, RAG, 웹 검색, Telegram/Disco
 
 | 에이전트 | 역할 | 모델 |
 |---|---|---|
-| Orchestrator | 쿼리 분석 · 라우팅 | gemma-4-31b-it-4bit |
-| Code | 코드 생성 | gemma-4-31b-it-4bit (공유) |
-| RAG | 문서 기반 답변 | gemma-4-26b-a4b-it-4bit |
-| Judge | 응답 품질 평가 | gemma-4-26b-a4b-it-4bit (공유) |
-| Search | 검색 결과 요약 | gemma-4-26b-a4b-it-4bit (공유) |
-| Summary | 최종 합성 | gemma-4-26b-a4b-it-4bit (공유) |
+| Orchestrator | 쿼리 분석 · 라우팅 | gemma-4-e4b-it-8bit |
+| Code | 코드 생성 | gemma-4-31b-it-4bit |
+| RAG | 문서 기반 답변 | gemma-4-26B-A4B-it-OptiQ-4bit |
+| Judge | 응답 품질 평가 | gemma-4-e4b-it-4bit |
+| Search | 검색 결과 요약 | gemma-4-26B-A4B-it-OptiQ-4bit (공유) |
+| Summary | 최종 합성 | gemma-4-26B-A4B-it-OptiQ-4bit (공유) |
 | Embedding | 문서 임베딩 | nomic-ai/nomic-embed-text-v2-moe |
 | STT | 음성 → 텍스트 | mlx-community/whisper-large-v3-turbo |
 
-메모리 사용량: **~30 GB** (128 GB 중)
+메모리 사용량: **~46 GB** (128 GB 중)
 
 ---
 
@@ -321,6 +321,54 @@ LocalAI/
 ---
 
 ## 변경 이력
+
+### 2026-08-15
+
+**모델 업그레이드 — 역할별 최적 모델 배치**
+
+- **Orchestrator**: `gemma-4-31b-it-4bit` → `gemma-4-e4b-it-8bit` (8.4 GB)
+  - 라우팅·쿼리 생성에 31B 불필요. 8bit MoE로 품질 유지 + 3× 속도 향상
+- **Judge**: `gemma-4-26b-a4b-it-4bit` → `gemma-4-e4b-it-4bit` (4.9 GB)
+  - pass/fail 판단에 26B 낭비. 4B MoE로 충분 + 8× 속도 향상
+- **RAG / Search / Summary**: `gemma-4-26b-a4b-it-4bit` (29 GB) → `gemma-4-26B-A4B-it-OptiQ-4bit` (16 GB)
+  - OptiQ 양자화 알고리즘으로 품질 동등 이상, 13 GB 절감
+- **Code**: `gemma-4-31b-it-4bit` 유지 (코드 생성 최고 품질 필요)
+- 총 메모리 ~50 GB → ~46 GB
+
+**응답 속도 전면 개선**
+
+- `harness/nodes.py`: `_do_retrieve` RAG 중간 추론 제거
+  - ChromaDB 검색 후 RAG 모델(26B)로 요약하던 단계 삭제
+  - raw docs → synthesize 직접 전달, rag 경로 기준 **5–10 s 절감**
+- `harness/nodes.py`: `tool_call` 모델 교체 — `SEARCH(26B)` → `ORCHESTRATOR(e4b-8bit)`
+  - tool→JSON 변환에 26B 불필요, **3–5 s 절감**
+- `harness/prompts.py`: ORCHESTRATOR_SYSTEM 예제 15개 → 7개 (프롬프트 토큰 50% 감소)
+- `harness/prompts.py`: SYNTHESIZE_SYSTEM에 문서 컨텍스트 처리 규칙 통합 (RAG 중간 모델 제거 보완)
+- `harness/nodes.py`: `asyncio.get_event_loop()` → `get_running_loop()` (deprecated 제거)
+
+**Telegram 음성 핸들러 안정성 수정**
+
+- `connectors/telegram.py`: `_handle_voice` 내 `send_chat_action` / `message.answer` try/except 누락 수정
+  - TelegramNetworkError 발생 시 핸들러 전체가 죽던 버그 수정 (텍스트 핸들러와 동일하게 처리)
+- 최종 응답 전송부(`placeholder.edit_text`) try/except 추가
+- `asyncio.get_event_loop()` → `get_running_loop()` 수정
+
+**Telegram 영상 메시지 STT 지원**
+
+- iPhone Telegram 앱의 동그란 영상 메시지(`video_note`) 및 일반 영상(`video`) 처리 추가
+- `connectors/telegram.py`: 핸들러 람다에 `m.video_note`, `m.video` 조건 추가
+- `_handle_voice`: ffmpeg으로 영상에서 오디오 추출(`-vn -acodec pcm_s16le -ar 16000`) 후 Whisper STT
+- ffmpeg 추출 실패 시 원본 파일로 폴백
+
+**CLI 툴 (`~/.local/bin/ai`)**
+
+- LocalAI API 연동 CLI 래퍼 (repo 외부 설치)
+- SSE 스트리밍 / 논스트리밍 모드
+- 세션 ID 지정 (`-s ID`) — 동일 세션으로 대화 이어가기
+- stdin 파이프 지원 — `cat file.swift | ai "리뷰해줘"`, `git diff | ai "커밋 메시지"`
+- `LOCALAI_URL` 환경 변수로 서버 URL 변경 가능
+
+---
 
 ### 2026-07-11
 
