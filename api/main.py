@@ -9,6 +9,7 @@ from core.config import get_settings
 from core.embeddings import EmbeddingManager
 from core.model import ModelManager
 from core.stt import STTManager
+from core.vlm import VLMManager
 from connectors import ConnectorRunner
 from harness import MemoryStore, build_graph
 from rag import Indexer, Retriever
@@ -71,6 +72,10 @@ async def lifespan(app: FastAPI):
             logger.warning(f"[startup] STT 모델 로드 실패: {e}")
             stt_manager = None
 
+    # VLM 초기화 (이미지 분석)
+    vlm_manager = VLMManager()
+    logger.info("[startup] VLM 지연 로드 준비 완료 (첫 이미지 요청 시 로드)")
+
     # Search 초기화
     search_client = UnifiedSearchClient(settings)
     await search_client.warmup()
@@ -92,6 +97,7 @@ async def lifespan(app: FastAPI):
         memory_store=memory_store,
         indexer=indexer,
         stt=stt_manager,
+        vlm=vlm_manager,
     )
     await connector_runner.start()
 

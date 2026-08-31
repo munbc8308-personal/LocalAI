@@ -19,11 +19,12 @@ _EDIT_INTERVAL_CHARS = 150   # 스트리밍 편집 주기 (글자 수)
 
 
 class TelegramConnector(BaseConnector):
-    def __init__(self, token: str, graph, memory_store: MemoryStore, stt=None):
+    def __init__(self, token: str, graph, memory_store: MemoryStore, stt=None, vlm=None):
         super().__init__(graph, memory_store)
         self._bot = Bot(token=token)
         self._dp = Dispatcher()
         self._stt = stt   # STTManager | None
+        self._vlm = vlm   # VLMManager | None
         self._setup_handlers()
 
     # ── 핸들러 등록 ───────────────────────────────────────────────────────────
@@ -59,6 +60,10 @@ class TelegramConnector(BaseConnector):
         @dp.message(lambda m: m.document is not None)
         async def handle_document(message: types.Message) -> None:
             await self._handle_file(message)
+
+        @dp.message(lambda m: m.photo is not None)
+        async def handle_photo(message: types.Message) -> None:
+            await self._handle_photo(message)
 
         @dp.message(lambda m: m.voice is not None or m.audio is not None
                     or m.video_note is not None or m.video is not None)
@@ -293,6 +298,45 @@ class TelegramConnector(BaseConnector):
                 await message.answer(chunk)
         except Exception as e:
             logger.error(f"[telegram] 음성 응답 전송 실패: {e}")
+
+    # ── 이미지 처리 (VLM) ────────────────────────────────────────────────────────
+
+    async def _handle_photo(self, message: types.Message) -> None:
+        if not self._vlm:
+            await message.answer("이미지 분석이 비활성화되어 있습니다.")
+            return
+
+        question = message.caption or "이 이미지를 자세히 설명해줘"
+
+        try:
+            status = await message.answer("🖼 이미지 분석 중...")
+        except Exception:
+            status = None
+
+        try:
+            photo = message.photo[-1]  # largest size
+            file = await self._bot.get_file(photo.file_id)
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                await self._bot.download_file(file.file_path, tmp)
+                tmp_path = tmp.name
+
+            response = await self._vlm.analyze(tmp_path, question)
+            pathlib.Path(tmp_path).unlink(missing_ok=True)
+
+            chunks = self.split_text(response, _MAX_MSG_LEN)
+            if status:
+                await status.edit_text(chunks[0])
+            else:
+                await message.answer(chunks[0])
+            for chunk in chunks[1:]:
+                await message.answer(chunk)
+        except Exception as e:
+            logger.error(f"[telegram] 이미지 처리 오류: {e}")
+            if status:
+                try:
+                    await status.edit_text("이미지 처리 중 오류가 발생했습니다.")
+                except Exception:
+                    pass
 
     # ── 파일 처리 (RAG 인덱싱) ─────────────────────────────────────────────────
 
