@@ -103,9 +103,10 @@ def _parse_line(line: str) -> tuple[str, str] | None:
 # ── 파일 워처 ─────────────────────────────────────────────────────────────────
 
 def _tail(path: Path):
+    if not path.exists():
+        print(f"[bridge] WoWChatLog.txt 없음 — WoW에서 /console chatLog 1 실행 후 재로그인 필요")
+        print(f"[bridge] 대기 중: {path}")
     while not path.exists():
-        print(f"[bridge] 로그 파일 없음, 대기 중: {path}")
-        print("[bridge]  → WoW에서 /console chatLog 1 실행 후 재로그인 필요")
         time.sleep(5)
 
     with open(path, encoding="utf-8", errors="ignore") as f:
