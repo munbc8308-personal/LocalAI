@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 WoW LoreAI Bridge
-WoW 채팅 로그 감시 → LocalAI API → macOS TTS
+SavedVariables(LoreAI.lua) 감시 → LocalAI API → macOS TTS
 
-실행: python -m connectors.wow_bridge
-     또는: python connectors/wow_bridge.py
+ReloadUI가 발생할 때 WoW가 LoreAI.lua를 디스크에 씀.
+Python이 파일 변경을 감지하고 request 필드를 읽어 처리.
 """
 
 import re
@@ -17,9 +17,15 @@ import httpx
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 
-WOW_LOG = Path("/Applications/World of Warcraft/_retail_/Logs/WoWChatLog.txt")
+# WoW 계정 ID — WTF 폴더에서 자동 탐색
+WTF_BASE = Path("/Applications/World of Warcraft/_retail_/WTF/Account")
 LOCALAI_URL = "http://localhost:8000/v1/chat/completions"
 SESSION_ID = "wow-loreai"
+
+ASK_SYSTEM = (
+    "당신은 World of Warcraft 전문가입니다. "
+    "플레이어의 WoW 관련 질문에 2~4문장으로 간결하게 한국어로 답합니다."
+)
 
 ZONE_SYSTEM = (
     "당신은 World of Warcraft의 현명한 로어마스터입니다. "
@@ -30,26 +36,44 @@ ZONE_SYSTEM = (
     "- 한국어, 웅장하고 신비로운 톤"
 )
 
-ASK_SYSTEM = (
-    "당신은 World of Warcraft 전문가입니다. "
-    "플레이어의 WoW 관련 질문에 2~4문장으로 간결하게 한국어로 답합니다."
-)
+# ── SavedVariables 파일 탐색 ───────────────────────────────────────────────────
+
+def find_savedvars() -> Path | None:
+    """LoreAI.lua SavedVariables 파일 탐색."""
+    matches = list(WTF_BASE.rglob("SavedVariables/LoreAI.lua"))
+    if not matches:
+        return None
+    # 가장 최근 수정된 파일
+    return max(matches, key=lambda p: p.stat().st_mtime)
+
+# ── SavedVariables 파서 ────────────────────────────────────────────────────────
+
+_REQ_PATTERN = re.compile(r'request\s*=\s*"([^"]+)"')
+_TS_PATTERN  = re.compile(r'timestamp\s*=\s*(\d+)')
+
+
+def parse_request(text: str) -> tuple[str, int] | None:
+    """LoreAI.lua에서 request와 timestamp 추출."""
+    req = _REQ_PATTERN.search(text)
+    ts  = _TS_PATTERN.search(text)
+    if not req:
+        return None
+    return req.group(1), int(ts.group(1)) if ts else 0
 
 # ── TTS ───────────────────────────────────────────────────────────────────────
 
 def _find_korean_voice() -> str:
     result = subprocess.run(["say", "-v", "?"], capture_output=True, text=True)
-    # 선호 순서
     for name in ("Yuna", "Reed", "Eddy", "Flo"):
         if name in result.stdout:
             return name
     for line in result.stdout.splitlines():
-        if "ko_" in line or "(ko_" in line:
+        if "ko_" in line:
             return line.split()[0]
     return ""
 
 _TTS_VOICE = _find_korean_voice()
-_tts_lock = threading.Lock()
+_tts_lock  = threading.Lock()
 
 
 def speak(text: str) -> None:
@@ -85,54 +109,69 @@ def ask_localai(system: str, user_msg: str) -> str:
         print(f"[bridge] LocalAI 오류: {e}")
         return ""
 
-# ── 로그 파서 ─────────────────────────────────────────────────────────────────
-
-# 예시 로그 라인:
-# 12/1 14:23:45.678  CHAT_MSG_WHISPER_INFORM,...,"[LoreAI]zone:Stormwind City",...
-_PATTERN = re.compile(r'\[LoreAI\](zone|ask):([^"\n]+)')
-
-
-def _parse_line(line: str) -> tuple[str, str] | None:
-    m = _PATTERN.search(line)
-    if not m:
-        return None
-    kind    = m.group(1)
-    content = m.group(2).strip().rstrip('",')
-    return kind, content
-
-# ── 파일 워처 ─────────────────────────────────────────────────────────────────
-
-def _tail(path: Path):
-    if not path.exists():
-        print(f"[bridge] WoWChatLog.txt 없음 — WoW에서 /console chatLog 1 실행 후 재로그인 필요")
-        print(f"[bridge] 대기 중: {path}")
-    while not path.exists():
-        time.sleep(5)
-
-    with open(path, encoding="utf-8", errors="ignore") as f:
-        f.seek(0, 2)
-        print(f"[bridge] 감시 시작: {path}")
-        while True:
-            line = f.readline()
-            if not line:
-                time.sleep(0.2)
-                continue
-            yield line
-
 # ── 핸들러 ────────────────────────────────────────────────────────────────────
 
-def _handle_zone(zone: str) -> None:
-    response = ask_localai(ZONE_SYSTEM, f"플레이어가 '{zone}'에 입장했습니다. 이 지역을 소개해주세요.")
+def _handle(kind: str, content: str) -> None:
+    if kind == "zone":
+        system = ZONE_SYSTEM
+        prompt = f"플레이어가 '{content}'에 입장했습니다. 이 지역을 소개해주세요."
+    else:
+        system = ASK_SYSTEM
+        prompt = content
+
+    print(f"[bridge] [{kind}] {content}")
+    response = ask_localai(system, prompt)
     if response:
-        print(f"[bridge] 로어: {response[:100]}...")
+        print(f"[bridge] 응답: {response[:80]}...")
         speak(response)
 
+# ── 파일 감시 루프 ────────────────────────────────────────────────────────────
 
-def _handle_ask(question: str) -> None:
-    response = ask_localai(ASK_SYSTEM, question)
-    if response:
-        print(f"[bridge] 답변: {response[:100]}...")
-        speak(response)
+def watch_loop() -> None:
+    sv_path: Path | None = None
+    last_ts = 0
+    last_mtime = 0.0
+
+    print("[bridge] SavedVariables 감시 시작...")
+
+    while True:
+        # 경로 탐색 (최초 or 재로그인 후)
+        if sv_path is None or not sv_path.exists():
+            sv_path = find_savedvars()
+            if sv_path is None:
+                time.sleep(3)
+                continue
+            print(f"[bridge] 감시 중: {sv_path}")
+
+        try:
+            mtime = sv_path.stat().st_mtime
+            if mtime == last_mtime:
+                time.sleep(0.5)
+                continue
+
+            last_mtime = mtime
+            text = sv_path.read_text(encoding="utf-8", errors="ignore")
+            parsed = parse_request(text)
+            if parsed is None:
+                time.sleep(0.5)
+                continue
+
+            request, ts = parsed
+            if ts <= last_ts or not request:
+                time.sleep(0.5)
+                continue
+
+            last_ts = ts
+
+            # "ask:질문" or "zone:지역명"
+            if ":" in request:
+                kind, content = request.split(":", 1)
+                threading.Thread(target=_handle, args=(kind, content), daemon=True).start()
+
+        except Exception as e:
+            print(f"[bridge] 감시 오류: {e}")
+
+        time.sleep(0.5)
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 
@@ -146,18 +185,7 @@ def main() -> None:
     except Exception as e:
         print(f"[bridge] 경고: LocalAI 응답 없음 — {e}")
 
-    for line in _tail(WOW_LOG):
-        if "[LoreAI]" not in line:
-            continue
-        parsed = _parse_line(line)
-        if not parsed:
-            continue
-        kind, content = parsed
-        print(f"[bridge] [{kind}] {content}")
-        if kind == "zone":
-            threading.Thread(target=_handle_zone, args=(content,), daemon=True).start()
-        elif kind == "ask":
-            threading.Thread(target=_handle_ask, args=(content,), daemon=True).start()
+    watch_loop()
 
 
 if __name__ == "__main__":
