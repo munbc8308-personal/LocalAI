@@ -18,7 +18,6 @@ import httpx
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 
 WOW_LOG = Path("/Applications/World of Warcraft/_retail_/Logs/WoWChatLog.txt")
-WOW_REQ = Path("/Applications/World of Warcraft/_retail_/Interface/AddOns/LoreAI/request.txt")
 LOCALAI_URL = "http://localhost:8000/v1/chat/completions"
 SESSION_ID = "wow-loreai"
 
@@ -137,34 +136,6 @@ def _handle_ask(question: str) -> None:
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 
-def _watch_request_file() -> None:
-    """C_FileSystem.WriteFile 방식: request.txt 변경 감시."""
-    last_mtime = 0.0
-    last_content = ""
-    print(f"[bridge] request.txt 감시 중: {WOW_REQ}")
-
-    while True:
-        try:
-            if WOW_REQ.exists():
-                mtime = WOW_REQ.stat().st_mtime
-                if mtime != last_mtime:
-                    last_mtime = mtime
-                    content = WOW_REQ.read_text(encoding="utf-8", errors="ignore").strip()
-                    if content and content != last_content:
-                        last_content = content
-                        parsed = _parse_line(content)
-                        if parsed:
-                            kind, payload = parsed
-                            print(f"[bridge] [{kind}] {payload}")
-                            if kind == "zone":
-                                threading.Thread(target=_handle_zone, args=(payload,), daemon=True).start()
-                            elif kind == "ask":
-                                threading.Thread(target=_handle_ask, args=(payload,), daemon=True).start()
-        except Exception as e:
-            print(f"[bridge] request.txt 읽기 오류: {e}")
-        time.sleep(0.3)
-
-
 def main() -> None:
     print(f"[bridge] TTS 음성: {_TTS_VOICE or '시스템 기본'}")
     print(f"[bridge] LocalAI:  {LOCALAI_URL}")
@@ -175,10 +146,6 @@ def main() -> None:
     except Exception as e:
         print(f"[bridge] 경고: LocalAI 응답 없음 — {e}")
 
-    # request.txt 감시 (C_FileSystem 방식) — 백그라운드
-    threading.Thread(target=_watch_request_file, daemon=True).start()
-
-    # WoWChatLog.txt 감시 (레거시 fallback)
     for line in _tail(WOW_LOG):
         if "[LoreAI]" not in line:
             continue
@@ -186,7 +153,7 @@ def main() -> None:
         if not parsed:
             continue
         kind, content = parsed
-        print(f"[bridge] [chatlog] [{kind}] {content}")
+        print(f"[bridge] [{kind}] {content}")
         if kind == "zone":
             threading.Thread(target=_handle_zone, args=(content,), daemon=True).start()
         elif kind == "ask":
