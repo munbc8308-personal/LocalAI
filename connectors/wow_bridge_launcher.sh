@@ -35,7 +35,7 @@ while true; do
 
         if [ -z "$BRIDGE_PID" ] || ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
             log "WoW 실행 감지 — bridge 시작"
-            "$VENV_PYTHON" "$BRIDGE_SCRIPT" &
+            "$VENV_PYTHON" -u "$BRIDGE_SCRIPT" &
             BRIDGE_PID=$!
             log "bridge PID: $BRIDGE_PID"
         fi

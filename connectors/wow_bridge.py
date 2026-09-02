@@ -9,11 +9,15 @@ Python이 파일 변경을 감지하고 request 필드를 읽어 처리.
 
 import re
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 
 import httpx
+
+# 비대화형 환경에서 즉시 플러시
+sys.stdout.reconfigure(line_buffering=True)
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 
@@ -48,8 +52,8 @@ def find_savedvars() -> Path | None:
 
 # ── SavedVariables 파서 ────────────────────────────────────────────────────────
 
-_REQ_PATTERN = re.compile(r'request\s*=\s*"([^"]+)"')
-_TS_PATTERN  = re.compile(r'timestamp\s*=\s*(\d+)')
+_REQ_PATTERN = re.compile(r'\["request"\]\s*=\s*"([^"]+)"')
+_TS_PATTERN  = re.compile(r'\["timestamp"\]\s*=\s*(\d+)')
 
 
 def parse_request(text: str) -> tuple[str, int] | None:
