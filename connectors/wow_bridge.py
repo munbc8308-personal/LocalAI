@@ -105,7 +105,7 @@ def ask_localai(system: str, user_msg: str) -> str:
                 "stream": False,
             },
             headers={"X-Session-Id": SESSION_ID},
-            timeout=60,
+            timeout=120,
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"].strip()
